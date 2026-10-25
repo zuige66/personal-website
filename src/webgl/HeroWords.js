@@ -63,15 +63,22 @@ export class HeroWords {
     const wW = wH * this.camera.aspect;
     // 竖屏时如果按高度缩放，字会大得离谱；这里取一个"视觉单位"
     const unit = Math.min(wH, wW * 1.15);
+    const k = this.scaleK ?? 1;
     this.items.forEach((it) => {
       const { cfg, mesh } = it;
-      const h = cfg.size * unit;
+      const h = cfg.size * unit * k;
       mesh.scale.set(h * it.aspect, h, 1);
       // x / y 用「半幅、半高」的比例，±1 = 贴边
       it.basePos = new THREE.Vector3((cfg.x * wW) / 2, (cfg.y * wH) / 2, cfg.z);
       mesh.position.copy(it.basePos);
       mesh.rotation.z = THREE.MathUtils.degToRad(cfg.rot);
     });
+  }
+
+  /** 整体缩放散字（人物占画面更多时用来避免糊住脸） */
+  setScale(k) {
+    this.scaleK = k;
+    this.layout();
   }
 
   setViewportH(h) {

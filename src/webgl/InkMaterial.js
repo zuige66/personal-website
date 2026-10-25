@@ -76,6 +76,13 @@ const frag = /* glsl */ `
   uniform float uToneBias;     // 整体调子偏移
   uniform float uShadowCrush;  // 暗部压成实墨的力度
 
+  // ---- 无 normalMap 资产专用：用几何法线给纯黑布料找回褶皱光 ----
+  uniform float uBlackLift;    // 黑料提亮总强度
+  uniform float uFoldLo;       // 褶皱朝光起始
+  uniform float uFoldHi;       // 褶皱朝光饱和（同时是细亮带起点）
+  uniform float uEdgeLift;     // 轮廓/边缘提亮
+
+
   uniform sampler2D uFaceTex;  // 脸谱（平面投影贴花）
   uniform float uHasFace;      // 是否启用脸部压平（抑制曲率压暗）
   uniform float uHasDecal;     // 是否叠加脸谱贴花
@@ -131,6 +138,7 @@ const frag = /* glsl */ `
     vec3 Ng = normalize(vNormalW);
     if (!gl_FrontFacing) Ng = -Ng;
     vec3 Vw = normalize(cameraPosition - vPosW);
+    float ndv = clamp(dot(Ng, Vw), 0.0, 1.0);
 
     // 法线图扰动后的法线 —— 细线在这里
     vec3 Nm = perturbNormal(Ng, Vw);
@@ -144,30 +152,44 @@ const frag = /* glsl */ `
     // 参考图里皮肤就是一张白纸 + 几根线，一旦压灰就"糊"了。
     float midMask = smoothstep(0.25, 0.95, 1.0 - tone);
 
-    // ---- 2. 掠射光打浮雕：法线图上每一根笔画都变成硬边阴影 ----
-    float rake = dot(Nm, uRakeDir);
-    float relief = smoothstep(uRakeLo, uRakeHi, rake);
-    // 有下限：最暗压到 0.6，不然整张脸会被打成一团黑
-    tone *= mix(1.0, mix(1.0, 0.60 + 0.40 * relief, uRakeGain), midMask);
-
-    // ---- 3. 大形光：保形体，但只占很小的比重 ----
-    float ndl = dot(Ng, normalize(uRakeDir + Vw * 0.85));
-    float form = 0.66 + 0.34 * smoothstep(uBandLow - 0.10, uBandHigh, ndl);
-    tone *= mix(1.0, form, uFormAmount * midMask);
-
-    // ---- 4. 脸谱区域：皮肤判定 + 平面投影 ----
-    // 参考图里脸就是一张白纸，只有几根细线。所以脸部区域要关掉曲率压暗，
-    // 否则鼻翼、眼窝会被压成一团黑（就是之前"鼻子太黑"的原因）。
+    // ---- 2. 脸区判定（提前算，后面的光影/提线都要避开它）----
+    // 参考图里脸就是一张白纸，只有几根细线。所以脸部要关掉曲率压暗与掠射阴影，
+    // 否则鼻翼、眼窝、下颌会被压成一团黑。
     vec2 fuv = vec2(0.0);
     float faceArea = 0.0;
     if (uHasFace > 0.5) {
       vec2 fp = (vPosW.xy - uFaceCenter.xy) / uFaceSize;
       fuv = vec2(fp.x + 0.5, fp.y + 0.5);
       float inside = step(0.0, fuv.x) * step(fuv.x, 1.0) * step(0.0, fuv.y) * step(fuv.y, 1.0);
-      float front = smoothstep(0.20, 0.55, abs(Ng.z));
-      // 注意：这里不乘皮肤亮度。脸谱已经烘焙进贴图，
-      // 眼睛那些线本身就是暗的，再按亮度筛会把五官自己筛掉。
+      // 用视空间夹角而不是 Ng.z —— 人物会左右转，用世界 z 判定会让脸区跟着漂走
+      float front = smoothstep(0.20, 0.55, ndv);
       faceArea = inside * front;
+    }
+
+    // ---- 3. 掠射光打浮雕：法线图上每一根笔画都变成硬边阴影 ----
+    float rake = dot(Nm, uRakeDir);
+    float relief = smoothstep(uRakeLo, uRakeHi, rake);
+    // 有下限：最暗压到 0.6，不然整张脸会被打成一团黑
+    tone *= mix(1.0, mix(1.0, 0.60 + 0.40 * relief, uRakeGain), midMask * (1.0 - faceArea * 0.8));
+
+    // ---- 4. 大形光：保形体，但只占很小的比重 ----
+    float ndl = dot(Ng, normalize(uRakeDir + Vw * 0.85));
+    float form = 0.66 + 0.34 * smoothstep(uBandLow - 0.10, uBandHigh, ndl);
+    tone *= mix(1.0, form, uFormAmount * midMask * (1.0 - faceArea * 0.8));
+
+    // ---- 3b. 无法线图资产：纯黑布料靠几何褶皱重新长出灰/白笔触 ----
+    // 乘法救不了 0，这里必须用 max() 往上抬。
+    // 参考图里黑外套不是一块死黑，而是「黑底 + 顺着褶子的白挑笔」。
+    if (uBlackLift > 0.001) {
+      float darkMask = 1.0 - smoothstep(0.06, 0.30, texL);
+      float fold = smoothstep(uFoldLo, uFoldHi, dot(Ng, uRakeDir));
+      // 细亮带：贴着褶脊的一窄条，模拟干笔扫高光
+      float crest = smoothstep(uFoldHi, uFoldHi + 0.05, dot(Ng, uRakeDir))
+                  * (1.0 - smoothstep(uFoldHi + 0.05, uFoldHi + 0.17, dot(Ng, uRakeDir)));
+      // 轮廓提亮：衣缘、肩线、手的边
+      float edge = pow(1.0 - ndv, 2.6);
+      float lift = (fold * 0.30 + crest * 0.42 + edge * uEdgeLift) * uBlackLift;
+      tone = max(tone, lift * darkMask);
     }
 
     // ---- 5. 几何曲率：凹陷压暗 + 大形转折线 ----
@@ -186,7 +208,6 @@ const frag = /* glsl */ `
     float lineZ = smoothstep(uDepthThr, uDepthThr * 2.2, gZ);
 
     // ---- 7. 轮廓线：视线掠射处出线 ----
-    float ndv = clamp(dot(Ng, Vw), 0.0, 1.0);
     float lineRim = smoothstep(1.0 - uRimThr, 1.0 - uRimThr * 0.3, 1.0 - ndv);
 
     // 脸部区域已经有烘焙好的五官，几何提线会把眼窝压成一团黑 —— 关掉。
@@ -199,7 +220,8 @@ const frag = /* glsl */ `
     tone = clamp(tone + uToneBias, 0.0, 1.0);
 
     // ---- 8. 网点：只在中间调出现 ----
-    float mid = smoothstep(0.06, 0.26, tone) * (1.0 - smoothstep(0.80, 0.97, tone));
+    // 下限压到 0.18：纯黑（黑外套、头发）与暗部不该长网点，否则整块变成灰麻布
+    float mid = smoothstep(0.18, 0.40, tone) * (1.0 - smoothstep(0.80, 0.97, tone));
     float dots = screentone(clamp(tone, 0.0, 1.0));
     float halftoned = mix(tone, 1.0 - dots, mid * uHalftone);
 
@@ -286,6 +308,10 @@ export function createInkMaterial({
   halftone = 1.0,
   toneBias = 0.0,
   shadowCrush = 0.06,
+  blackLift = 0.0,
+  foldLo = 0.55,
+  foldHi = 0.78,
+  edgeLift = 0.55,
   faceTex = null,
   faceMask = true,
   faceCenter = new THREE.Vector3(0, 0, 0),
@@ -326,6 +352,10 @@ export function createInkMaterial({
       uHalftone: { value: halftone },
       uToneBias: { value: toneBias },
       uShadowCrush: { value: shadowCrush },
+      uBlackLift: { value: blackLift },
+      uFoldLo: { value: foldLo },
+      uFoldHi: { value: foldHi },
+      uEdgeLift: { value: edgeLift },
       uFaceTex: { value: faceTex || WHITE_1PX },
       uHasFace: { value: faceMask ? 1 : 0 },
       uHasDecal: { value: faceTex ? 1 : 0 },

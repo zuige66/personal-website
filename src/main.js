@@ -497,38 +497,99 @@ async function init() {
   let webglOK = true;
   let scene, orbit, words;
 
+  // 模型选择：默认新的 Tripo 全身像；?model=v1 回到旧的半身像
+  const MODEL = new URLSearchParams(location.search).get('model') === 'v1' ? 'v1' : 'v2';
+  const MODEL_SRC = MODEL === 'v1' ? '/character.min.glb' : '/character-v2.min.glb';
+  // 新模型没有 normalMap，靠几何法线给黑布料找回褶皱笔触
+  const MODEL_INK =
+    MODEL === 'v1'
+      ? {}
+      : {
+          useNormal: false,
+          blackLift: 0.55,
+          foldLo: 0.50,
+          foldHi: 0.72,
+          edgeLift: 0.72,
+          levelLo: 0.32,
+          levelHi: 0.62,
+          rakeLo: 0.34,
+          rakeHi: 0.74,
+          rakeGain: 0.85,
+          cavGain: 0.42,
+          lineThr: 0.17,
+          halftone: 0.40,
+          dotSize: 2.8,
+        };
+
+  // 人物左右偏转上限：略小于 45°，再大就会把后脑勺露出来
+  const MAX_YAW = (41 * Math.PI) / 180;
+  let yaw = 0;
+
+  // 竖屏（手机）不放环绕导航：画面太窄，六个标签会全叠在脸上，
+  // 移动端直接用 HUD 里的 INDEX 目录
+  const navAllowed = () => window.innerWidth / window.innerHeight >= 0.9;
+  let navFade = 1;
+  let orbitScrollFade = 0;   // 0 = 全显，1 = 完全收起
+
   try {
     const canvas = $('#gl');
     scene = new HeroScene(canvas);
+    scene.applyPreset(scene.presets[MODEL]);
     loaderText.textContent = '正在载入代码与骨骼';
 
-    await scene.loadCharacter('/character.min.glb', (p) => {
+    await scene.loadCharacter(MODEL_SRC, (p) => {
       glProgress = p;
       setProgress(0.1 + p * 0.86);
-    });
+    }, MODEL_INK);
 
     orbit = new OrbitNav(scene.scene, scene.camera, nav, {
+      // v1 是半身像，取景更紧，轨道要收回来，否则标签会顶出画面
+      ...(MODEL === 'v1'
+        ? { baseSize: 0.075, arc: 1.18, ringR: 0.86, baseY: 0.46, tiltK: 0.10 }
+        : { baseSize: 0.16, arc: 0.95, ringR: 1.42, baseY: 0.26, tiltK: 0.16 }),
       onHover: (item) => {
         document.body.classList.toggle('cursor-hot', !!item);
         words?.setDim(item ? 0.3 : 1);
       },
     });
 
-    words = new HeroWords(scene.scene, scene.camera, heroWords, scene.viewportH);
+    // v2 取景更满：正面的散字会盖住导航，统一挪到人物身后；整体缩小一档
+    const wordsCfg =
+      MODEL === 'v2'
+        ? heroWords.map((w) =>
+            // 最大的那句挪到左下角、压到人物身后：它本来是要和人物打架的，
+            // 但 v2 取景太满，留在原位会直接把导航糊掉
+            w.z > 0 ? { ...w, x: -0.86, y: -0.72, z: -1.35 } : w
+          )
+        : heroWords;
+    words = new HeroWords(scene.scene, scene.camera, wordsCfg, scene.viewportH);
+    if (MODEL === 'v2') words.setScale(0.46);
 
     scene.addUpdater((t, dt, pointer) => {
-      // 人物：轻微呼吸 + 跟随指针
+      // 人物：轻微呼吸 + 跟随指针左右转（夹在 ±41°）
       if (scene.character) {
+        const target = pointer.x * MAX_YAW + Math.sin(t * 0.24) * 0.018;
+        yaw += (target - yaw) * (1 - Math.exp(-dt * 7));
+        yaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, yaw));
+
         scene.character.position.y = Math.sin(t * 0.8) * 0.012;
-        scene.character.rotation.y = lerp(scene.character.rotation.y, pointer.x * 0.14, 0.05);
-        scene.character.rotation.x = lerp(scene.character.rotation.x, -pointer.y * 0.04, 0.05);
+        scene.character.rotation.y = yaw;
+        scene.character.rotation.x = lerp(scene.character.rotation.x, -pointer.y * 0.035, 0.05);
       }
+      orbit.setYaw(yaw);
+      // 竖屏直接收起；横屏时按滚动进度淡出
+      navFade += ((navAllowed() ? 1 : 0) - navFade) * (1 - Math.exp(-dt * 6));
+      orbit.setVisible(navFade * (1 - orbitScrollFade));
       orbit.update(t, dt, pointer);
       words.update(t, pointer);
     });
 
     scene.start();
     assetsDone = true;
+
+    if (import.meta.env?.DEV) {
+      window.__hero = { scene, orbit, words, getYaw: () => yaw };
+    }
   } catch (err) {
     console.warn('[webgl] 初始化失败，降级为平面排版', err);
     webglOK = false;
@@ -571,7 +632,7 @@ async function init() {
         scene.camera.position.z = scene.baseZ * lerp(1, 0.84, p);
       }
       if (words) words.setVisible(1 - Math.max(0, (p - 0.45) / 0.5));
-      orbit?.setVisible(1 - Math.max(0, (p - 0.3) / 0.45));
+      orbitScrollFade = Math.max(0, (p - 0.3) / 0.45);
       $('#gl').style.opacity = String(1 - Math.max(0, (p - 0.7) / 0.3));
     },
     onLeave: () => scene?.setActive(false),

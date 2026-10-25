@@ -34,12 +34,22 @@ export class HeroScene {
     this.updaters = [];
 
     // 取景框：低机位近景（模型归一化后 y ∈ [-1, 1]）
-    // 参考图的构图是「手怼到镜头前 + 脸在上三分之一」，所以：
-    //   - top/bottom 收紧，镜头才能压近
-    //   - 相机比视线低一截 → 仰视，前伸的手自然落到下前景
-    this.frame = { top: 1.10, bottom: 0.10 };
-    this.camLift = -0.14;   // 相机相对取景中心下移
-    this.lookY = 0.50;      // 视线高度（> 相机高度 = 仰视）
+    // v1 = 旧的半身像；v2 = Tripo 全身像（手伸向镜头，参考图构图）
+    this.presets = {
+      v1: {
+        top: 1.10, bottom: 0.10,
+        camLift: -0.14, lookY: 0.50,
+        camX: 0, targetX: 0, targetY: 0.50,
+        fovWide: 30, fovTall: 42, zoom: 1,
+      },
+      v2: {
+        top: 1.05, bottom: -0.62,
+        camLift: -0.10, lookY: 0.20,
+        camX: 0, targetX: 0.07, targetY: 0.20,
+        fovWide: 30, fovTall: 42, zoom: 1,
+      },
+    };
+    this.applyPreset(this.presets.v2, false);
 
     this._setupLights();
     this._setupEnvironment();
@@ -99,24 +109,37 @@ export class HeroScene {
     this.renderer.setPixelRatio(this.dpr);
     this.renderer.setSize(w, h, false);
 
+    const p = this.preset;
     this.camera.aspect = w / h;
     // 竖屏时把 fov 拉大一点，避免人物左右被切太狠
-    this.camera.fov = w / h < 0.85 ? 42 : 30;
+    this.camera.fov = w / h < 0.85 ? p.fovTall : p.fovWide;
 
-    // 按取景框反推相机距离，保证「头顶留白 + 裙摆在画面底边」
-    const span = this.frame.top - this.frame.bottom;
+    // 按取景框反推相机距离，保证「头顶留白 + 画面底边切在腰以下」
+    const span = p.top - p.bottom;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    this.camera.position.z = span / (2 * halfTan);
-    this.camera.position.y = (this.frame.top + this.frame.bottom) / 2 + this.camLift;
-    this.camera.lookAt(0, this.lookY, 0);
+    // 竖屏用 vTight 对应拉远；横屏用 zoom
+    this.camera.position.z = (span / (2 * halfTan)) * (w / h < 0.85 ? p.zoom : 1);
+    this.camera.position.x = p.camX;
+    this.camera.position.y = (p.top + p.bottom) / 2 + p.camLift;
+    this.camera.lookAt(p.targetX, p.targetY, 0);
     this.camera.updateProjectionMatrix();
 
+    this.frame = { top: p.top, bottom: p.bottom };
     this.baseZ = this.camera.position.z;
     this.viewportH = span;
+
+    // 构图里有相机水平偏移时，画面中心会平移；记下来给导航算可见宽度
+    this.frameCenterX = p.targetX;
+  }
+
+  /** 切换构图预设（v1 半身 / v2 全身手部前景） */
+  applyPreset(preset, doResize = true) {
+    this.preset = { ...preset };
+    if (doResize) this.resize();
   }
 
   /** 载入人物 */
-  async loadCharacter(url, onProgress) {
+  async loadCharacter(url, onProgress, inkOpts = {}) {
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
     const gltf = await loader.loadAsync(url, (evt) => {
@@ -136,6 +159,7 @@ export class HeroScene {
 
     const TARGET_H = 2.0;
     holder.scale.setScalar(TARGET_H / size.y);
+    holder.updateWorldMatrix(true, true);
 
     // 材质：换成墨线着色器
     // 这个模型的细线全烙在 normalMap 里，MeshStandardMaterial 的软光照会把它抹平；
@@ -152,11 +176,13 @@ export class HeroScene {
     });
 
     // 脸部区域（世界空间，模型已归一化到高度 2.0、中心在原点）
-    // 五官已经用 tools/bake-face.mjs 烘焙进 baseColor 贴图了，
+    // v1 的五官已经用 tools/bake-face.mjs 烘焙进 baseColor 贴图；
     // 这里只是告诉着色器"这块是脸"：关掉几何提线和曲率压暗，
     // 否则眼窝/鼻翼会被压成一团黑，把烘焙好的五官糊掉。
-    const faceCenter = new THREE.Vector3(0.043, 0.884, 0.11);
-    const faceSize = new THREE.Vector2(0.226, 0.26);
+    // v2（Tripo 全身像）没有烘焙，按几何自动找头部正面那一块。
+    const autoFace = this._detectFaceBox(holder, root);
+    const faceCenter = inkOpts.faceCenter || autoFace?.center || new THREE.Vector3(0.043, 0.884, 0.11);
+    const faceSize = inkOpts.faceSize || autoFace?.size || new THREE.Vector2(0.226, 0.26);
 
     this.ink = applyInkToObject(root, {
       paper: '#f2f1ec',
@@ -182,12 +208,69 @@ export class HeroScene {
       faceCenter,
       faceSize,
       faceGain: 1,
+      ...inkOpts,
     });
 
     this.character = holder;
     this.characterBaseY = 0;
     this.scene.add(holder);
     return holder;
+  }
+
+  /**
+   * 从几何里找"脸"：取最高那一段、法线朝前的顶点，求包围盒。
+   * 只在没有烘焙贴图的新模型上用；v1 用既有常量，避免取景漂移。
+   */
+  _detectFaceBox(holder, root) {
+    const tmp = new THREE.Vector3();
+    const nrm = new THREE.Vector3();
+    const nm = new THREE.Matrix3();
+
+    let maxY = -Infinity;
+    let minY = Infinity;
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const pa = o.geometry.attributes.position;
+      for (let i = 0; i < pa.count; i += 3) {
+        tmp.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+        if (tmp.y > maxY) maxY = tmp.y;
+        if (tmp.y < minY) minY = tmp.y;
+      }
+    });
+    if (!Number.isFinite(maxY)) return null;
+
+    // 头部大约占身高 1/8，加上头发给到 22%
+    const sliceBottom = maxY - (maxY - minY) * 0.22;
+    const headBox = new THREE.Box3();
+    const pts = [];
+
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      nm.getNormalMatrix(o.matrixWorld);
+      const pa = o.geometry.attributes.position;
+      const na = o.geometry.attributes.normal;
+      for (let i = 0; i < pa.count; i += 2) {
+        tmp.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld);
+        if (tmp.y < sliceBottom) continue;
+        nrm.fromBufferAttribute(na, i).applyMatrix3(nm).normalize();
+        if (nrm.z < 0.5) continue;
+        headBox.expandByPoint(tmp);
+        pts.push(tmp.x, tmp.y, tmp.z);
+      }
+    });
+
+    if (!pts.length) return null;
+    const c = headBox.getCenter(new THREE.Vector3());
+    const s = headBox.getSize(new THREE.Vector3());
+    return {
+      center: new THREE.Vector3(c.x, c.y - s.y * 0.08, c.z + 0.02),
+      size: new THREE.Vector2(s.x * 1.05, s.y * 1.1),
+    };
+  }
+
+  /** 人物左右偏转（弧度），调用方负责夹在 ±45° 内 */
+  setYaw(yaw) {
+    this.yaw = yaw;
   }
 
   addUpdater(fn) {
@@ -207,7 +290,8 @@ export class HeroScene {
 
       if (this.active) {
         // 指针缓动
-        this.pointerSmooth.lerp(this.pointer, 0.06);
+        // 用时间步长而不是固定系数：低帧率时也能在同样时间里追到指针
+        this.pointerSmooth.lerp(this.pointer, 1 - Math.exp(-dt * 6));
 
         for (let i = 0; i < this.updaters.length; i++) this.updaters[i](t, dt, this.pointerSmooth);
 

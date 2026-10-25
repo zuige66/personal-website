@@ -2,13 +2,23 @@ import * as THREE from 'three';
 import { makeNavTexture } from './text.js';
 
 /**
- * 环绕在人物周围的导航
- * - 位置绕 Y 轴公转（透视自然产生大小变化）
- * - 始终朝向相机（billboard），所以背面也能读
- * - 开启 depthTest，被人物身体遮挡时自然消失 —— 这就是"环绕 + 遮挡"
+ * 环绕在人物前方的导航
+ * ------------------------------------------------------------
+ * 和上一版的差别：
+ *   - 不再绕整圈。人物只左右各转 <45°，环绕也收在正面扇区里，
+ *     否则项会转到脑后 / 飞出画面，读都读不到。
+ *   - 所有项严格落在同一条（略微倾斜的）椭圆轨道上，轨道本身画成虚线。
+ *     之前六个标签各自飘在不同高度，看起来像掉在地上的纸片，不像环绕。
+ *   - 轨道的倾角让左右两端出现高低差，加上透视的近大远小，
+ *     才有一圈东西绕着人转的错觉。
  */
 export class OrbitNav {
-  constructor(scene, camera, navData, { onSelect, onHover } = {}) {
+  constructor(
+    scene,
+    camera,
+    navData,
+    { onSelect, onHover, arc = 1.05, baseSize = 0.272, ringR = 1.42, baseY = 0.26, tiltK = 0.16 } = {}
+  ) {
     this.scene = scene;
     this.camera = camera;
     this.data = navData;
@@ -21,17 +31,24 @@ export class OrbitNav {
     this.geo = new THREE.PlaneGeometry(1, 1);
     this.items = [];
     this.hovered = null;
-    this.rotation = 0;
+    this.arc = arc;          // 扇区半张角（弧度）
+    this.yaw = 0;            // 人物偏转，由外部喂进来
+    this.sway = 0;           // 轨道整体摆角（夹在 SWAY_LIMIT 内）
     this.scrollRot = 0;
     this.visible = 1;
 
+    // 轨道形状：胸口偏上，绕 Z 轴略微倾斜 → 左右有高低差
+    this.baseY = baseY;
+    this.tiltK = tiltK;
+    this.ringR = ringR;
+
     const n = navData.length;
-    // 高度都压在胸口以下，避免公转到正前方时糊住脸
-    const ys = [0.30, 0.02, -0.26, 0.15, -0.14, -0.36];
 
     navData.forEach((d, i) => {
-      const angle = (i / n) * Math.PI * 2;
-      const radius = 1.30 + (i % 3) * 0.10;
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const az = (-1 + 2 * t) * arc;
+      // 半径微错开：越靠中间越靠前，纵深更明显
+      const radius = this.ringR + ((i * 7) % 3) * 0.045;
 
       const normal = makeNavTexture({ index: d.index, label: d.label, jp: d.jp, sub: d.en, invert: false });
       const hover = makeNavTexture({ index: d.index, label: d.label, jp: d.jp, sub: d.en, invert: true });
@@ -54,7 +71,7 @@ export class OrbitNav {
       });
 
       const mesh = new THREE.Mesh(this.geo, matN);
-      const h = 0.272;
+      const h = baseSize;
       mesh.scale.set(h * normal.aspect, h, 1);
       mesh.renderOrder = 2;
       mesh.userData.itemIndex = i;
@@ -72,25 +89,96 @@ export class OrbitNav {
         mesh,
         matN,
         matH,
-        angle,
+        az,
         radius,
-        y: ys[i % ys.length],
         baseH: h,
         aspect: normal.aspect,
         scale: 1,
         targetScale: 1,
-        roll: (i % 2 === 0 ? -1 : 1) * (0.03 + (i % 3) * 0.015),
+        roll: (i % 2 === 0 ? -1 : 1) * (0.025 + (i % 3) * 0.012),
         hoverMix: 0,
+        phase: i * 0.9,
       });
     });
+
+    this.guides = this._buildGuides();
+    this.group.add(this.guides);
 
     this._raycaster = new THREE.Raycaster();
     this._q = new THREE.Quaternion();
     this._zAxis = new THREE.Vector3(0, 0, 1);
   }
 
+  /** 轨道上某角度的位置（与 update 里完全同一套公式，保证线穿住标签） */
+  _pointAt(a, radius) {
+    const sx = Math.sin(a);
+    return {
+      x: sx * radius,
+      y: this.baseY + this.tiltK * sx * radius,
+      z: Math.cos(a) * radius,
+    };
+  }
+
+  /**
+   * 轨道线：两条虚线弧（上沿 / 下沿），两端渐隐到纸色。
+   * 顶点色插值到纸色 = 不写 shader 的假淡出。
+   */
+  _buildGuides() {
+    const ROWS = [0.075, -0.075]; // 相对轨道中线的上下沿
+    const R = this.ringR;
+    const N = 132;
+    const pos = [];
+    const col = [];
+    const ink = new THREE.Color('#0a0a0a');
+    const paper = new THREE.Color('#f2f1ec');
+
+    const a0 = -this.arc - 0.24;
+    const a1 = this.arc + 0.24;
+
+    const fade = (u) => Math.min(1, Math.min(u, 1 - u) / 0.19);
+    const at = (u, dy) => {
+      const a = a0 + (a1 - a0) * u;
+      const p = this._pointAt(a, R);
+      return new THREE.Vector3(p.x, p.y + dy, p.z);
+    };
+
+    for (const dy of ROWS) {
+      for (let i = 0; i < N; i++) {
+        if (i % 3 === 2) continue; // 2 实 1 虚
+        const uA = i / N;
+        const uB = (i + 1) / N;
+        const pa = at(uA, dy);
+        const pb = at(uB, dy);
+        pos.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
+        const ca = paper.clone().lerp(ink, fade(uA));
+        const cb = paper.clone().lerp(ink, fade(uB));
+        col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b);
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+
+    const m = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      depthTest: true,
+    });
+    const lines = new THREE.LineSegments(g, m);
+    lines.renderOrder = 1;
+    return lines;
+  }
+
+  /** 人物偏转（弧度） */
+  setYaw(yaw) {
+    this.yaw = yaw;
+  }
+
   setScrollProgress(p) {
-    this.scrollRot = p * 1.15;
+    this.scrollRot = p * 0.5;
   }
 
   setVisible(v) {
@@ -100,39 +188,46 @@ export class OrbitNav {
   }
 
   update(t, dt, pointer) {
-    this.rotation += dt * 0.075;
+    // 摆角 = 人物偏转 * 0.42 + 指针 + 极慢呼吸，全部夹在扇区内
+    const target =
+      this.yaw * 0.42 + pointer.x * 0.09 + this.scrollRot + Math.sin(t * 0.33) * 0.05;
+    this.sway += (target - this.sway) * Math.min(1, dt * 2.4);
+    this.sway = THREE.MathUtils.clamp(this.sway, -0.30, 0.30);
 
-    const base = this.rotation + this.scrollRot + pointer.x * 0.42;
-    const tilt = pointer.y * 0.10;
+    const tiltY = pointer.y * 0.07;
 
     // 以桌面 16:9 为基准做归一化，保证竖屏 / 宽屏比例一致
     const vh = this.camera.aspect
       ? 2 * this.camera.position.z * Math.tan((this.camera.fov * Math.PI) / 360)
       : 2.41;
     const vScale = vh / 2.41;
-    // 轨道半径跟着相机距离收缩，保证近景时导航不出画；
-    // 但不低于 0.88，否则会缩进人物身体里，遮挡效果就没了。
-    const rScale = Math.max(0.88, Math.min(1, vScale));
+    const rScale = Math.max(0.9, Math.min(1, vScale));
     const portrait = this.camera.aspect < 0.9;
-    let xScale = Math.min(
-      portrait ? 1 : 0.86,
-      Math.max(portrait ? 0.21 : 0.55, this.camera.aspect / (portrait ? 1.9 : 1.7))
-    );
 
-    // 近景时镜头越近，导航越容易横向出画 —— 按可视宽度再收一次。
-    // 半径会压扁成竖排，但总比飞出屏幕好。
+    // 近景时镜头越近，导航越容易横向出画 —— 按可视宽度再收一次
+    let xScale = Math.min(
+      portrait ? 1 : 0.95,
+      Math.max(portrait ? 0.21 : 0.58, this.camera.aspect / (portrait ? 1.9 : 1.7))
+    );
     const halfTan = Math.tan((this.camera.fov * Math.PI) / 360);
     const halfW = this.camera.position.z * halfTan * (this.camera.aspect || 1.6);
-    const maxRadius = 1.40 * rScale;
-    xScale = Math.min(xScale, (halfW * 0.94) / maxRadius);
+    // 按「最外侧那个标签的外沿」反推横向压缩，而不是写死一个常量：
+    // 两侧留白 = 半个可视宽 - 标签半宽，否则两端会把字切掉
+    const reach = Math.max(0.2, this.ringR * Math.sin(this.arc));
+    const labelHalfW = (this.items[0]?.baseH ?? 0.16) * 1.1;
+    xScale = Math.min(xScale, Math.max(0.2, (halfW * 0.84 - labelHalfW) / reach));
     const zScale = portrait ? 0.55 + 0.45 * xScale : 1;
     const sizeDamp = portrait ? 0.55 : 1;
 
     for (const it of this.items) {
-      const a = it.angle + base;
-      const x = Math.sin(a) * it.radius * rScale * xScale;
-      const z = Math.cos(a) * it.radius * rScale * zScale;
-      const y = it.y * rScale + tilt + Math.sin(t * 0.7 + it.angle * 2) * 0.012;
+      const a = it.az + this.sway;
+      const p = this._pointAt(a, it.radius * rScale);
+      const x = p.x * xScale;
+      const z = p.z * zScale;
+      const y =
+        p.y +
+        tiltY +
+        Math.sin(t * 0.62 + it.phase) * 0.011;
 
       it.mesh.position.set(x, y, z);
 
@@ -142,8 +237,8 @@ export class OrbitNav {
       it.mesh.quaternion.multiply(this._q);
 
       // 前后大小差异（透视之外再补一点，让"大小变化"更明显）
-      const depth = z / it.radius; // -1 后 … 1 前
-      const extra = 1 + depth * 0.14;
+      const depth = z / (it.radius * rScale);
+      const extra = 1 + depth * 0.16;
 
       const isHover = this.hovered === it;
       it.targetScale = isHover ? 1.12 : 1;
@@ -152,13 +247,19 @@ export class OrbitNav {
       const s = it.baseH * vScale * sizeDamp * extra * it.scale;
       it.mesh.scale.set(s * it.aspect, s, 1);
 
-      // hover 反色交叉淡入
+      // 靠后的项稍微淡一点，暗示"绕到后面去了"
+      const fade = 1 - 0.32 * Math.max(0, 1 - depth);
       it.hoverMix += ((isHover ? 1 : 0) - it.hoverMix) * Math.min(1, dt * 12);
-      const fade = 1 - 0.42 * Math.max(0, -depth);
       it.matN.opacity = (1 - it.hoverMix) * fade * this.visible;
       it.matH.opacity = it.hoverMix * fade * this.visible;
       it.mesh.visible = this.visible > 0.01;
     }
+
+    // 轨道线跟着同一套压缩参数走
+    this.guides.scale.set(xScale, 1, zScale);
+    this.guides.position.y = tiltY;
+    this.guides.material.opacity = 0.8 * this.visible;
+    this.guides.visible = this.visible > 0.01;
   }
 
   /** 返回被指向的导航项 */
