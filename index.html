@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>YAO KONG — Visual Designer &amp; Creative Developer</title>
+  <meta name="description" content="YAO KONG 的个人站：作品、项目、博客、图片与简历。" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta property="og:title" content="YAO KONG — Visual Designer & Creative Developer" />
+  <meta property="og:description" content="作品、项目、博客、图片与简历。" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#f2f1ec" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+  <!-- ============ 载入层 ============ -->
+  <div class="loader" id="loader">
+    <div class="loader__inner">
+      <div class="loader__meta">
+        <span>YAO KONG</span>
+        <span>PORTFOLIO / 2026</span>
+      </div>
+      <div class="loader__bar"><i id="loaderBar"></i></div>
+      <div class="loader__row">
+        <span id="loaderText">正在载入墨与骨骼</span>
+        <span id="loaderNum">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3D 画布 ============ -->
+  <canvas id="gl"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="halftone" aria-hidden="true"></div>
+
+  <!-- ============ 顶部 HUD ============ -->
+  <header class="hud" id="hud">
+    <a class="hud__logo" href="#top" data-nav="top">
+      <span class="hud__logo-cn">YAO</span><span class="hud__logo-star">*</span><span class="hud__logo-cn">KONG</span>
+    </a>
+    <div class="hud__right">
+      <span class="hud__clock" id="clock">--:--:--</span>
+      <button class="hud__menu" id="menuBtn" aria-label="打开目录">
+        <span>INDEX</span>
+        <i></i><i></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ 目录遮罩 ============ -->
+  <div class="index-overlay" id="indexOverlay" aria-hidden="true">
+    <div class="index-overlay__bg"></div>
+    <div class="index-overlay__body">
+      <p class="index-overlay__label">目次 / INDEX</p>
+      <nav class="index-overlay__nav" id="indexNav"></nav>
+      <div class="index-overlay__foot">
+        <a href="mailto:hello@yaokong.studio" id="indexMail">hello@yaokong.studio</a>
+        <div class="index-overlay__socials" id="indexSocials"></div>
+      </div>
+    </div>
+  </div>
+
+  <main id="main">
+
+    <!-- ============ 01 HERO ============ -->
+    <section class="hero" id="top">
+      <div class="hero__frame" aria-hidden="true">
+        <span class="hero__corner hero__corner--tl"></span>
+        <span class="hero__corner hero__corner--tr"></span>
+        <span class="hero__corner hero__corner--bl"></span>
+        <span class="hero__corner hero__corner--br"></span>
+      </div>
+
+      <div class="hero__side hero__side--left" aria-hidden="true">
+        <span>PORTFOLIO</span>
+        <span>2016 — 2026</span>
+      </div>
+      <div class="hero__side hero__side--right" aria-hidden="true">
+        <span id="heroLoc">SHANGHAI, CN</span>
+        <span>31.23°N / 121.47°E</span>
+      </div>
+
+      <div class="hero__bottom">
+        <div class="hero__role">
+          <em id="heroRole">Visual Designer &amp; Creative Developer</em>
+          <span>视觉设计 / 创意开发</span>
+        </div>
+        <div class="hero__scroll">
+          <span>SCROLL</span>
+          <i></i>
+        </div>
+      </div>
+
+      <!-- 环绕导航的兜底（无 WebGL 时可见） -->
+      <nav class="hero__fallback" id="heroFallback"></nav>
+    </section>
+
+    <!-- ============ 跑马灯 ============ -->
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker__track" id="tickerTrack"></div>
+    </div>
+
+    <!-- ============ 02 宣言 ============ -->
+    <section class="statement">
+      <div class="wrap">
+        <p class="kicker"><span>STATEMENT</span><span>2026</span></p>
+        <h2 class="statement__text" id="statementText">
+          我做的不是页面，是节奏。留白、停顿、突然的重音——屏幕和纸其实共用同一套呼吸法。
+        </h2>
+        <div class="statement__meta">
+          <div><span>BASED IN</span><b>Shanghai, CN</b></div>
+          <div><span>WORKING SINCE</span><b>2016</b></div>
+          <div><span>FOCUS</span><b>Identity · Web · Motion</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 03 WORKS ============ -->
+    <section class="works" id="works">
+      <div class="works__pin">
+        <div class="works__head wrap">
+          <p class="kicker"><span>01 / SELECTED WORKS</span><span>作品</span></p>
+          <h2 class="sec-title">SELECTED<br /><em>WORKS</em></h2>
+          <p class="works__hint">横向拖动 / 滚动 →</p>
+        </div>
+        <div class="works__viewport">
+          <div class="works__track" id="worksTrack"></div>
+        </div>
+        <div class="works__progress"><i id="worksBar"></i></div>
+      </div>
+    </section>
+
+    <!-- ============ 04 PROJECTS ============ -->
+    <section class="projects" id="projects">
+      <div class="wrap">
+        <p class="kicker"><span>02 / PROJECTS</span><span>項目</span></p>
+        <h2 class="sec-title">SIDE<br /><em>PROJECTS</em></h2>
+        <ul class="proj-list" id="projList"></ul>
+        <div class="proj-float" id="projFloat"><img alt="" /></div>
+      </div>
+    </section>
+
+    <!-- ============ 05 BLOG ============ -->
+    <section class="blog" id="blog">
+      <div class="wrap">
+        <p class="kicker"><span>03 / JOURNAL</span><span>日記</span></p>
+        <h2 class="sec-title">NOTES<br /><em>&amp; WRITING</em></h2>
+        <ul class="blog-list" id="blogList"></ul>
+        <div class="blog-float" id="blogFloat"><img alt="" /></div>
+      </div>
+    </section>
+
+    <!-- ============ 06 PHOTOS ============ -->
+    <section class="photos" id="photos">
+      <div class="wrap">
+        <p class="kicker"><span>04 / PHOTO ARCHIVE</span><span>写真</span></p>
+        <h2 class="sec-title">PHOTO<br /><em>ARCHIVE</em></h2>
+      </div>
+      <div class="photo-grid" id="photoGrid"></div>
+    </section>
+
+    <!-- ============ 07 RESUME ============ -->
+    <section class="resume" id="resume">
+      <div class="wrap">
+        <p class="kicker"><span>05 / RESUME</span><span>履歴</span></p>
+        <h2 class="sec-title">CURRICULUM<br /><em>VITAE</em></h2>
+        <p class="resume__summary" id="resumeSummary"></p>
+        <div class="resume__grid">
+          <div class="resume__col">
+            <h3>EXPERIENCE</h3>
+            <ul class="timeline" id="timeline"></ul>
+          </div>
+          <div class="resume__col">
+            <h3>CAPABILITY</h3>
+            <ul class="skills" id="skills"></ul>
+            <h3 class="mt">TOOLS</h3>
+            <ul class="tools" id="tools"></ul>
+            <h3 class="mt">EDUCATION</h3>
+            <p class="resume__edu" id="edu"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 08 ABOUT ============ -->
+    <section class="about" id="about">
+      <div class="wrap about__grid">
+        <div class="about__left">
+          <p class="kicker"><span>06 / ABOUT</span><span>紹介</span></p>
+          <h2 class="sec-title">ABOUT<br /><em>ME</em></h2>
+        </div>
+        <div class="about__right">
+          <p class="about__lead" id="aboutLead"></p>
+          <div class="about__rows" id="aboutRows"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 09 CONTACT ============ -->
+    <footer class="contact" id="contact">
+      <div class="wrap">
+        <p class="kicker"><span>07 / CONTACT</span><span>連絡</span></p>
+        <div class="contact__words" id="contactWords"></div>
+        <a class="contact__mail" id="contactMail" href="#"><span></span></a>
+      </div>
+      <div class="contact__foot wrap">
+        <span>© 2026 YAO KONG</span>
+        <span>MADE WITH THREE.JS</span>
+        <span id="footLoc">SHANGHAI</span>
+      </div>
+    </footer>
+
+  </main>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
