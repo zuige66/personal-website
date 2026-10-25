@@ -168,6 +168,65 @@ p {
 }
 
 /* ------------------------------------------------------------
+   外链转场幕布
+   ------------------------------------------------------------ */
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 190;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.veil.is-on {
+  visibility: visible;
+}
+
+.veil__panel {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: translateY(102%);
+}
+
+.veil__panel::after {
+  /* 面板顶缘的墨点装饰 */
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.veil__label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-display);
+  font-size: clamp(56px, 11vw, 150px);
+  letter-spacing: 0.02em;
+  color: var(--paper);
+  opacity: 0;
+  white-space: nowrap;
+}
+
+.veil__meta {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + clamp(40px, 8vw, 110px));
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper);
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------
    载入层
    ------------------------------------------------------------ */
 .loader {

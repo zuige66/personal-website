@@ -97,7 +97,7 @@ function renderContent() {
   // —— 博客 ——
   $('#blogList').innerHTML = posts
     .map(
-      (p) => `<li><a href="${p.href || '#'}" ${p.href ? 'target="_blank" rel="noopener"' : ''} data-img="${p.image}">
+      (p) => `<li><a href="${p.href || '#'}" data-img="${p.image}">
         <span class="idx">${p.index}</span>
         <span class="title">${p.title}</span>
         <span class="meta"><span>${p.date}</span><span>${p.read}</span></span>
@@ -387,7 +387,39 @@ function buildHoverFloats() {
 }
 
 /* ============================================================
-   6. 目录 / 时钟
+   6. 外链转场：墨幕扫过 → 跳转
+   ============================================================ */
+function buildVeil() {
+  const veil = $('#veil');
+  const panel = veil.querySelector('.veil__panel');
+  const label = $('#veilLabel');
+  const meta = $('#veilMeta');
+  let busy = false;
+
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('#blogList a, #projList a');
+    if (!a || busy) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    // 用户偏好减少动效时直接走默认跳转
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    e.preventDefault();
+    busy = true;
+    const toBlog = a.closest('#blogList') !== null;
+    label.textContent = toBlog ? 'BLOG →' : 'GITHUB ↗';
+    meta.textContent = toBlog ? 'blog.zuiges.com' : 'github.com/zuige66';
+    veil.classList.add('is-on');
+    gsap
+      .timeline()
+      .fromTo(panel, { yPercent: 102 }, { yPercent: 0, duration: 0.6, ease: 'power4.inOut' })
+      .fromTo(label, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, '-=0.18')
+      .fromTo(meta, { opacity: 0 }, { opacity: 0.55, duration: 0.3 }, '-=0.2')
+      .add(() => { window.location.href = href; }, '+=0.3');
+  });
+}
+
+/* ============================================================
+   7. 目录 / 时钟
    ============================================================ */
 function buildOverlay() {
   const overlay = $('#indexOverlay');
@@ -437,12 +469,13 @@ function buildOverlay() {
 }
 
 /* ============================================================
-   7. 主流程
+   8. 主流程
    ============================================================ */
 async function init() {
   document.body.classList.add('is-loading');
   renderContent();
   buildOverlay();
+  buildVeil();
   buildCursor();
   buildHoverFloats();
 
