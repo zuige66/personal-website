@@ -157,11 +157,9 @@ function renderContent() {
   const mail = $('#contactMail');
   mail.href = `mailto:${site.email}`;
   mail.querySelector('span').textContent = site.email;
-  $('#footLoc').textContent = site.location.toUpperCase();
 
   // —— HUD 文案 ——
   $('#heroRole').textContent = site.role;
-  $('#heroLoc').textContent = site.location.toUpperCase();
   document.title = `${site.name} — ${site.role}`;
 }
 
@@ -247,15 +245,6 @@ function buildScrollAnimations() {
       duration: 1.1,
       ease: 'power3.out',
       scrollTrigger: { trigger: el, start: 'top 88%' },
-    });
-  });
-
-  $$('.kicker').forEach((el) => {
-    gsap.from(el, {
-      opacity: 0,
-      y: 12,
-      duration: 0.8,
-      scrollTrigger: { trigger: el, start: 'top 92%' },
     });
   });
 
@@ -568,7 +557,6 @@ async function init() {
     .set('#loader', { display: 'none' })
     .from('.hud', { opacity: 0, y: -10, duration: 0.8, ease: 'power2.out' }, '-=0.5')
     .from('.hero__bottom > *', { opacity: 0, y: 20, duration: 0.9, stagger: 0.1, ease: 'power2.out' }, '-=0.7')
-    .from('.hero__side', { opacity: 0, duration: 1, stagger: 0.1 }, '-=0.8')
     .from('.hero__frame', { opacity: 0, duration: 1 }, '-=0.9');
 
   // hero 滚动：镜头推进 + 环绕旋转
