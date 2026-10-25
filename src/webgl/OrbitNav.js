@@ -13,11 +13,23 @@ import { makeNavTexture } from './text.js';
  *     才有一圈东西绕着人转的错觉。
  */
 export class OrbitNav {
+  /** 轨道摆角上限：既要跟得住手，又不能把最外侧的项甩出扇区 */
+  static SWAY_LIMIT = 0.50;
+
   constructor(
     scene,
     camera,
     navData,
-    { onSelect, onHover, arc = 1.05, baseSize = 0.272, ringR = 1.42, baseY = 0.26, tiltK = 0.16 } = {}
+    {
+      onSelect,
+      onHover,
+      arc = 1.05,
+      baseSize = 0.272,
+      ringR = 1.42,
+      baseY = 0.26,
+      tiltK = 0.08,
+      tiltX = 0.24,
+    } = {}
   ) {
     this.scene = scene;
     this.camera = camera;
@@ -37,16 +49,25 @@ export class OrbitNav {
     this.scrollRot = 0;
     this.visible = 1;
 
-    // 轨道形状：胸口偏上，绕 Z 轴略微倾斜 → 左右有高低差
+    // 轨道形状：
+    //   tiltK —— 绕 Z 轴倾斜，左右有高低差
+    //   tiltX —— 绕 X 轴倾斜，近端压低、远端抬高，椭圆才张得开。
+    //            没有这一项时环几乎是贴着视平线的两条平行虚线，
+    //            看不出"从身后穿过去"。
     this.baseY = baseY;
     this.tiltK = tiltK;
+    this.tiltX = tiltX;
     this.ringR = ringR;
 
     const n = navData.length;
 
+    // 标签的方位角按【投影后的横向位置】均匀分配，而不是按角度均匀。
+    // 按角度均匀时 sin() 在两端变平，最外两项会挤在一起（WORKS/PROJECTS 叠字）。
+    const sMax = Math.sin(arc);
+
     navData.forEach((d, i) => {
       const t = n === 1 ? 0.5 : i / (n - 1);
-      const az = (-1 + 2 * t) * arc;
+      const az = Math.asin(-sMax + 2 * sMax * t);
       // 半径微错开：越靠中间越靠前，纵深更明显
       const radius = this.ringR + ((i * 7) % 3) * 0.045;
 
@@ -112,46 +133,48 @@ export class OrbitNav {
   /** 轨道上某角度的位置（与 update 里完全同一套公式，保证线穿住标签） */
   _pointAt(a, radius) {
     const sx = Math.sin(a);
+    const cz = Math.cos(a);
     return {
       x: sx * radius,
-      y: this.baseY + this.tiltK * sx * radius,
-      z: Math.cos(a) * radius,
+      y: this.baseY + this.tiltK * sx * radius - this.tiltX * cz * radius,
+      z: cz * radius,
     };
   }
 
   /**
-   * 轨道线：两条虚线弧（上沿 / 下沿），两端渐隐到纸色。
-   * 顶点色插值到纸色 = 不写 shader 的假淡出。
+   * 轨道线：两条虚线（上沿 / 下沿），画成【整圈闭环】。
+   * 之前只画正面一段弧，两端凭空断掉，看起来是"贴在画面上的弧"；
+   * 闭合成圈之后，后半圈会从人物身后穿过去（depthTest 挡住），
+   * 再从左/右两侧绕回来 —— 这才是"环绕"的完整读法。
+   * 背面段用顶点色往纸色插值压淡，省一个 shader，也不至于抢人物。
    */
   _buildGuides() {
     const ROWS = [0.075, -0.075]; // 相对轨道中线的上下沿
     const R = this.ringR;
-    const N = 132;
+    const N = 192;                 // 能被 3 整除，虚线接缝对齐
     const pos = [];
     const col = [];
     const ink = new THREE.Color('#0a0a0a');
     const paper = new THREE.Color('#f2f1ec');
 
-    const a0 = -this.arc - 0.24;
-    const a1 = this.arc + 0.24;
-
-    const fade = (u) => Math.min(1, Math.min(u, 1 - u) / 0.19);
-    const at = (u, dy) => {
-      const a = a0 + (a1 - a0) * u;
+    const at = (a, dy) => {
       const p = this._pointAt(a, R);
       return new THREE.Vector3(p.x, p.y + dy, p.z);
     };
 
+    // 正前 = 1，正后 = 0，背面留 0.28 的底，避免整段消失
+    const shade = (a) => 0.34 + 0.66 * (0.5 + 0.5 * Math.cos(a));
+
     for (const dy of ROWS) {
       for (let i = 0; i < N; i++) {
         if (i % 3 === 2) continue; // 2 实 1 虚
-        const uA = i / N;
-        const uB = (i + 1) / N;
-        const pa = at(uA, dy);
-        const pb = at(uB, dy);
+        const aA = (i / N) * Math.PI * 2 - Math.PI;
+        const aB = ((i + 1) / N) * Math.PI * 2 - Math.PI;
+        const pa = at(aA, dy);
+        const pb = at(aB, dy);
         pos.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
-        const ca = paper.clone().lerp(ink, fade(uA));
-        const cb = paper.clone().lerp(ink, fade(uB));
+        const ca = paper.clone().lerp(ink, shade(aA));
+        const cb = paper.clone().lerp(ink, shade(aB));
         col.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b);
       }
     }
@@ -188,11 +211,14 @@ export class OrbitNav {
   }
 
   update(t, dt, pointer) {
-    // 摆角 = 人物偏转 * 0.42 + 指针 + 极慢呼吸，全部夹在扇区内
+    // 摆角 = 指针 + 人物偏转 + 慢呼吸，全部夹在扇区内。
+    // 方向是【反的】：鼠标往右 → 轨道往左转。
+    // 理由很实际 —— 往右滑是为了把右边的 ABOUT 转进来点得到，
+    // 如果轨道跟着指针同向跑，最外侧那两项永远在屏幕边上够不着。
     const target =
-      this.yaw * 0.42 + pointer.x * 0.09 + this.scrollRot + Math.sin(t * 0.33) * 0.05;
+      -pointer.x * 0.52 - this.yaw * 0.12 + this.scrollRot + Math.sin(t * 0.33) * 0.05;
     this.sway += (target - this.sway) * Math.min(1, dt * 2.4);
-    this.sway = THREE.MathUtils.clamp(this.sway, -0.30, 0.30);
+    this.sway = THREE.MathUtils.clamp(this.sway, -OrbitNav.SWAY_LIMIT, OrbitNav.SWAY_LIMIT);
 
     const tiltY = pointer.y * 0.07;
 
@@ -215,7 +241,7 @@ export class OrbitNav {
     // 两侧留白 = 半个可视宽 - 标签半宽，否则两端会把字切掉
     const reach = Math.max(0.2, this.ringR * Math.sin(this.arc));
     const labelHalfW = (this.items[0]?.baseH ?? 0.16) * 1.1;
-    xScale = Math.min(xScale, Math.max(0.2, (halfW * 0.84 - labelHalfW) / reach));
+    xScale = Math.min(xScale, Math.max(0.2, (halfW * 0.80 - labelHalfW) / reach));
     const zScale = portrait ? 0.55 + 0.45 * xScale : 1;
     const sizeDamp = portrait ? 0.55 : 1;
 

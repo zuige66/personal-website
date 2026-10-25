@@ -521,8 +521,8 @@ async function init() {
           dotSize: 2.8,
         };
 
-  // 人物左右偏转上限：略小于 45°，再大就会把后脑勺露出来
-  const MAX_YAW = (41 * Math.PI) / 180;
+  // 人物左右偏转上限 30°：再大就把侧脸和后脑勺露出来，画面也铺太满
+  const MAX_YAW = (30 * Math.PI) / 180;
   let yaw = 0;
 
   // 竖屏（手机）不放环绕导航：画面太窄，六个标签会全叠在脸上，
@@ -545,8 +545,8 @@ async function init() {
     orbit = new OrbitNav(scene.scene, scene.camera, nav, {
       // v1 是半身像，取景更紧，轨道要收回来，否则标签会顶出画面
       ...(MODEL === 'v1'
-        ? { baseSize: 0.075, arc: 1.18, ringR: 0.86, baseY: 0.46, tiltK: 0.10 }
-        : { baseSize: 0.16, arc: 0.95, ringR: 1.42, baseY: 0.26, tiltK: 0.16 }),
+        ? { baseSize: 0.075, arc: 1.18, ringR: 0.86, baseY: 0.52, tiltK: 0.06, tiltX: 0.14 }
+        : { baseSize: 0.15, arc: 0.90, ringR: 1.42, baseY: 0.46, tiltK: 0.13, tiltX: 0.18 }),
       onHover: (item) => {
         document.body.classList.toggle('cursor-hot', !!item);
         words?.setDim(item ? 0.3 : 1);
