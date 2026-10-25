@@ -10,3 +10,4 @@ Thumbs.db
 # 模型源文件太大，不进 git（线上用的是 public/character.min.glb）
 assets/*.glb
 character-1025-full.glb
+.qa/
