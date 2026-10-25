@@ -97,7 +97,7 @@ function renderContent() {
   // —— 博客 ——
   $('#blogList').innerHTML = posts
     .map(
-      (p) => `<li><a href="#" data-img="${p.image}">
+      (p) => `<li><a href="${p.href || '#'}" ${p.href ? 'target="_blank" rel="noopener"' : ''} data-img="${p.image}">
         <span class="idx">${p.index}</span>
         <span class="title">${p.title}</span>
         <span class="meta"><span>${p.date}</span><span>${p.read}</span></span>
@@ -478,7 +478,7 @@ async function init() {
   try {
     const canvas = $('#gl');
     scene = new HeroScene(canvas);
-    loaderText.textContent = '正在载入墨与骨骼';
+    loaderText.textContent = '正在载入代码与骨骼';
 
     await scene.loadCharacter('/character.min.glb', (p) => {
       glProgress = p;

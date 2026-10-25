@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { applyInkToObject } from './InkMaterial.js';
 
 /**
  * 首页 WebGL 场景：人物 + 环绕导航 + 漫画散字
@@ -32,9 +33,13 @@ export class HeroScene {
     this.pointerSmooth = new THREE.Vector2(0, 0);
     this.updaters = [];
 
-    // 取景框：只拍到裙摆，腿和脚留在画面外（模型归一化后 y ∈ [-1, 1]）
-    // bottom 卡在裙摆下沿（约 -0.52），让衣摆正好压在页面底边上
-    this.frame = { top: 1.11, bottom: -0.545 };
+    // 取景框：低机位近景（模型归一化后 y ∈ [-1, 1]）
+    // 参考图的构图是「手怼到镜头前 + 脸在上三分之一」，所以：
+    //   - top/bottom 收紧，镜头才能压近
+    //   - 相机比视线低一截 → 仰视，前伸的手自然落到下前景
+    this.frame = { top: 1.10, bottom: 0.10 };
+    this.camLift = -0.14;   // 相机相对取景中心下移
+    this.lookY = 0.50;      // 视线高度（> 相机高度 = 仰视）
 
     this._setupLights();
     this._setupEnvironment();
@@ -102,8 +107,8 @@ export class HeroScene {
     const span = this.frame.top - this.frame.bottom;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     this.camera.position.z = span / (2 * halfTan);
-    this.camera.position.y = (this.frame.top + this.frame.bottom) / 2;
-    this.camera.lookAt(0, this.camera.position.y, 0);
+    this.camera.position.y = (this.frame.top + this.frame.bottom) / 2 + this.camLift;
+    this.camera.lookAt(0, this.lookY, 0);
     this.camera.updateProjectionMatrix();
 
     this.baseZ = this.camera.position.z;
@@ -132,25 +137,51 @@ export class HeroScene {
     const TARGET_H = 2.0;
     holder.scale.setScalar(TARGET_H / size.y);
 
-    // 材质：原贴图是黑白墨笔触，压低金属度让它像纸上的墨
+    // 材质：换成墨线着色器
+    // 这个模型的细线全烙在 normalMap 里，MeshStandardMaterial 的软光照会把它抹平；
+    // InkMaterial 用掠射光重新打浮雕 + 硬分层，才能出 2D 手绘的感觉。
     root.traverse((o) => {
       if (!o.isMesh) return;
       const src = o.material;
-      const map = src.map || null;
-      if (map) {
-        map.colorSpace = THREE.SRGBColorSpace;
-        map.anisotropy = this.maxAniso;
+      if (src.map) {
+        src.map.colorSpace = THREE.SRGBColorSpace;
+        src.map.anisotropy = this.maxAniso;
       }
-      o.material = new THREE.MeshStandardMaterial({
-        map,
-        normalMap: src.normalMap || null,
-        metalness: 0.0,
-        roughness: 0.92,
-        envMapIntensity: 0.4,
-        side: THREE.FrontSide,
-      });
-      if (o.material.normalMap) o.material.normalMap.anisotropy = this.maxAniso;
+      if (src.normalMap) src.normalMap.anisotropy = this.maxAniso;
       o.frustumCulled = false;
+    });
+
+    // 脸部区域（世界空间，模型已归一化到高度 2.0、中心在原点）
+    // 五官已经用 tools/bake-face.mjs 烘焙进 baseColor 贴图了，
+    // 这里只是告诉着色器"这块是脸"：关掉几何提线和曲率压暗，
+    // 否则眼窝/鼻翼会被压成一团黑，把烘焙好的五官糊掉。
+    const faceCenter = new THREE.Vector3(0.043, 0.884, 0.11);
+    const faceSize = new THREE.Vector2(0.226, 0.26);
+
+    this.ink = applyInkToObject(root, {
+      paper: '#f2f1ec',
+      ink: '#0a0a0a',
+      useMap: true,
+      useNormal: true,
+      normalScale: 1.0,
+      levelLo: 0.10,
+      levelHi: 0.65,
+      rakeLo: 0.30,
+      rakeHi: 0.72,
+      rakeGain: 0.95,
+      formAmount: 0.28,
+      cavGain: 0.50,
+      lineThr: 0.10,
+      mapLineGain: 0,
+      halftone: 0,
+      dotSize: 2.4,
+      pixelRatio: this.dpr || 1,
+      // 不再用平面投影贴花（会随视角滑动），五官在贴图里
+      faceTex: null,
+      faceMask: true,
+      faceCenter,
+      faceSize,
+      faceGain: 1,
     });
 
     this.character = holder;

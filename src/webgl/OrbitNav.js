@@ -110,19 +110,29 @@ export class OrbitNav {
       ? 2 * this.camera.position.z * Math.tan((this.camera.fov * Math.PI) / 360)
       : 2.41;
     const vScale = vh / 2.41;
+    // 轨道半径跟着相机距离收缩，保证近景时导航不出画；
+    // 但不低于 0.88，否则会缩进人物身体里，遮挡效果就没了。
+    const rScale = Math.max(0.88, Math.min(1, vScale));
     const portrait = this.camera.aspect < 0.9;
-    const xScale = Math.min(
+    let xScale = Math.min(
       portrait ? 1 : 0.86,
       Math.max(portrait ? 0.21 : 0.55, this.camera.aspect / (portrait ? 1.9 : 1.7))
     );
+
+    // 近景时镜头越近，导航越容易横向出画 —— 按可视宽度再收一次。
+    // 半径会压扁成竖排，但总比飞出屏幕好。
+    const halfTan = Math.tan((this.camera.fov * Math.PI) / 360);
+    const halfW = this.camera.position.z * halfTan * (this.camera.aspect || 1.6);
+    const maxRadius = 1.40 * rScale;
+    xScale = Math.min(xScale, (halfW * 0.94) / maxRadius);
     const zScale = portrait ? 0.55 + 0.45 * xScale : 1;
     const sizeDamp = portrait ? 0.55 : 1;
 
     for (const it of this.items) {
       const a = it.angle + base;
-      const x = Math.sin(a) * it.radius * vScale * xScale;
-      const z = Math.cos(a) * it.radius * zScale;
-      const y = it.y * vScale + tilt + Math.sin(t * 0.7 + it.angle * 2) * 0.012;
+      const x = Math.sin(a) * it.radius * rScale * xScale;
+      const z = Math.cos(a) * it.radius * rScale * zScale;
+      const y = it.y * rScale + tilt + Math.sin(t * 0.7 + it.angle * 2) * 0.012;
 
       it.mesh.position.set(x, y, z);
 
