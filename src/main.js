@@ -146,7 +146,7 @@ function renderContent() {
     `<a href="mailto:${site.email}"><span>EMAIL</span><span>${site.email}</span></a>`,
     `<a href="#" data-nav="contact"><span>LOCATION</span><span>${site.location}</span></a>`,
     ...site.socials.map(
-      (s) => `<a href="${s.href}" target="_blank" rel="noopener"><span>${s.label}</span><span>↗</span></a>`
+      (s) => `<a href="${s.href}" target="_blank" rel="noopener noreferrer"><span>${s.label}</span><span>↗</span></a>`
     ),
   ].join('');
 
@@ -400,7 +400,9 @@ function buildVeil() {
   };
 
   document.addEventListener('click', (e) => {
-    const a = e.target.closest('#blogList a, #projList a');
+    // ABOUT 区的 GITHUB / BLOG 也是外链（带 target=_blank），一并走转场；
+    // 同区域的 EMAIL（mailto）和 LOCATION（锚点）没有 target，天然被排除
+    const a = e.target.closest('#blogList a, #projList a, #aboutRows a[target="_blank"]');
     if (!a) return;
     if (busy) { e.preventDefault(); return; }
     const href = a.getAttribute('href');
@@ -416,7 +418,10 @@ function buildVeil() {
     }
 
     busy = true;
-    const toBlog = a.closest('#blogList') !== null;
+    // ABOUT 区的链接不在 #blogList 里，文案改按域名判断
+    let host = '';
+    try { host = new URL(href, location.origin).hostname; } catch { /* 非法 href 按 GitHub 处理 */ }
+    const toBlog = host.startsWith('blog.');
     label.textContent = toBlog ? 'BLOG →' : 'GITHUB ↗';
     meta.textContent = toBlog ? 'blog.zuiges.com' : 'github.com/zuige66';
     veil.classList.add('is-on');

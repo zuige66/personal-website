@@ -17,7 +17,25 @@
 | 弹窗被拦截 | `window.open` 返回 `null`，退回 `location.href` 当前页跳转 |
 | 从新标签页切回 | 幕布复位、跟随图收起 |
 
-`#projList a` / `#blogList a` 同时带 `target="_blank" rel="noopener noreferrer"`，保证鼠标中键、右键「在新标签页打开」也走新窗口。
+触发范围是三个选择器：
+
+```js
+'#blogList a, #projList a, #aboutRows a[target="_blank"]'
+```
+
+前两处是博客与项目列表，第三处是 ABOUT 区的 GITHUB / BLOG 两行。三处都带 `target="_blank" rel="noopener noreferrer"`，保证中键、右键「在新标签页打开」也走新窗口。
+
+ABOUT 区的 EMAIL（`mailto:`）和 LOCATION（锚点）没有 `target`，天然被选择器排除，不会误触发幕布。
+
+文案不再靠 `closest('#blogList')` 判断（ABOUT 区不在那个列表里），改成解析 host：
+
+```js
+let host = '';
+try { host = new URL(href, location.origin).hostname; } catch { /* 非法 href 按 GitHub 处理 */ }
+const toBlog = host.startsWith('blog.');
+```
+
+目录遮罩（`#indexSocials`）里的 GitHub / Blog 没接进来：那里点完要同时收遮罩，两套动画叠在一起会打架。
 
 ---
 
