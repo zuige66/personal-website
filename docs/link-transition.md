@@ -68,13 +68,15 @@ layout();                                              // 初始化 + 每次 res
 
 ## 4. 返回主页面后图标残留
 
-三个来源，逐条处理：
+两个来源，逐条处理：
 
 | 来源 | 原因 | 处理 |
 |---|---|---|
 | `veil.is-on` 残留 | bfcache 把离开前的 DOM 原样还回来，类名还在 | `pageshow`（`e.persisted`）+ `popstate` 时 `reset()` |
 | `busy` 锁死 | 闭包变量没复位，回来后点链接毫无反应 | `reset()` 里置 `false` |
-| 跟随图 `is-on` 残留 | `#projFloat` / `#blogFloat` 只靠 `pointerleave` 收起，跳转时指针没离开就跳走了 | 点击时 `dropFloats()`，`reset()` 再清一次 |
+
+（早期还有第三个来源：列表 hover 的跟随缩略图 `#projFloat` / `#blogFloat` 只靠 `pointerleave` 收起，
+跳转时指针没离开就跳走了。该功能已整体移除，这条也随之消失。）
 
 `reset()` 同时 `tl.kill()` 并重跑 `layout()`，所以动画进行到一半被打断也不会留下半个黑色面板。切回标签页走的是 `visibilitychange`（`visible` 时复位）——新窗口打开会让本页进后台，`rAF` 暂停、动画冻在半路，靠这一步兜底。
 
@@ -128,3 +130,21 @@ URL=http://127.0.0.1:5173/ node tools/veil-check.mjs    # 真实点击、新窗�
 ~1760ms    面板上收至 -918
 ~1860ms    reset，回到 918
 ```
+
+---
+
+## 附：列表 hover 的图片预览已移除
+
+早先「项目 / 博客」列表在 hover 时，会有一块约 `20vw` 的缩略图跟着鼠标飘，用来看项目截图。实际观感不好——图跟着光标满屏乱飞，反而盖住了正在读的文字，所以整体去掉了。
+
+移除范围：
+
+| 位置 | 内容 |
+|---|---|
+| `index.html` | `#projFloat` / `#blogFloat` 两个 `div` |
+| `src/style.css` | `.proj-float` / `.blog-float` 样式块，以及移动端媒体查询里的 `display: none` |
+| `src/main.js` | `buildHoverFloats()` 及其调用；列表模板里的 `data-img`；`buildVeil()` 里只为浮图存在的 `floats` / `dropFloats()` |
+
+`content.js` 里 `projects` / `posts` 的 `image` 字段保留，仅作素材索引，当前没有渲染方。
+
+hover 反馈不受影响：列表项本身有整行黑底反白 + 左右内缩位移（`.proj-list a:hover::before`），信息足够。`public/media/proj-0*.svg` 这几个缩略图现在已无引用。

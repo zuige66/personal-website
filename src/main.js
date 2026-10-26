@@ -85,7 +85,7 @@ function renderContent() {
   // —— 项目 ——
   $('#projList').innerHTML = projects
     .map(
-      (p) => `<li><a href="${p.href}" data-img="${p.image}" target="_blank" rel="noopener noreferrer">
+      (p) => `<li><a href="${p.href}" target="_blank" rel="noopener noreferrer">
         <span class="idx">${p.index}</span>
         <span class="name">${p.name}</span>
         <span class="stack">${p.stack}</span>
@@ -97,7 +97,7 @@ function renderContent() {
   // —— 博客 ——
   $('#blogList').innerHTML = posts
     .map(
-      (p) => `<li><a href="${p.href || '#'}" data-img="${p.image}" target="_blank" rel="noopener noreferrer">
+      (p) => `<li><a href="${p.href || '#'}" target="_blank" rel="noopener noreferrer">
         <span class="idx">${p.index}</span>
         <span class="title">${p.title}</span>
         <span class="meta"><span>${p.date}</span><span>${p.read}</span></span>
@@ -352,29 +352,6 @@ function buildCursor() {
   });
 }
 
-function buildHoverFloats() {
-  const setup = (listSel, floatSel) => {
-    const float = $(floatSel);
-    const img = float.querySelector('img');
-    const mx = gsap.quickTo(float, 'x', { duration: 0.5, ease: 'power3' });
-    const my = gsap.quickTo(float, 'y', { duration: 0.5, ease: 'power3' });
-
-    window.addEventListener('pointermove', (e) => {
-      mx(e.clientX); my(e.clientY);
-    });
-
-    $$(`${listSel} a`).forEach((a) => {
-      a.addEventListener('pointerenter', () => {
-        img.src = a.dataset.img;
-        float.classList.add('is-on');
-      });
-      a.addEventListener('pointerleave', () => float.classList.remove('is-on'));
-    });
-  };
-  setup('#projList', '#projFloat');
-  setup('#blogList', '#blogFloat');
-}
-
 /* ============================================================
    6. 外链转场：墨幕扫过 → 新窗口打开 → 幕布自收
    ============================================================ */
@@ -383,14 +360,10 @@ function buildVeil() {
   const panel = veil.querySelector('.veil__panel');
   const label = $('#veilLabel');
   const meta = $('#veilMeta');
-  const floats = ['#projFloat', '#blogFloat'].map((s) => $(s)).filter(Boolean);
 
   let tl = null;
   let busy = false;
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // 跟随图只在 pointerleave 时收起；跳转时指针没离开，回来会一直挂在屏上
-  const dropFloats = () => floats.forEach((f) => f.classList.remove('is-on'));
 
   // 定位与初始态统一由 GSAP 接管（CSS 里的 transform 会和百分比叠加，已移除）
   const layout = () => {
@@ -408,7 +381,6 @@ function buildVeil() {
     veil.classList.remove('is-on');
     document.body.classList.remove('is-veil');
     layout();
-    dropFloats();
   };
 
   // 新窗口打开；被拦截时退回当前页跳转，免得点了没反应
@@ -444,7 +416,6 @@ function buildVeil() {
     }
 
     busy = true;
-    dropFloats();
     const toBlog = a.closest('#blogList') !== null;
     label.textContent = toBlog ? 'BLOG →' : 'GITHUB ↗';
     meta.textContent = toBlog ? 'blog.zuiges.com' : 'github.com/zuige66';
@@ -535,7 +506,6 @@ async function init() {
   buildOverlay();
   buildVeil();
   buildCursor();
-  buildHoverFloats();
 
   const loaderNum = $('#loaderNum');
   const loaderBar = $('#loaderBar');

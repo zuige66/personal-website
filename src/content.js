@@ -52,7 +52,7 @@ export const works = [
   { index: '04', title: 'SMARTCAR',       year: '2025', type: 'STM32 嵌入式',   client: 'FreeRTOS',   image: '/media/work-04.svg', desc: '基于 STM32F103 的智能消防巡检机器人，四路循迹 PID 走线与多级热警告。' },
 ];
 
-/** 项目：hover 跟随图的列表（年份为估计值，待核对） */
+/** 项目：hover 时整行反色（image 字段目前不展示，hover 预览已移除，保留作素材索引。年份为估计值，待核对） */
 export const projects = [
   { index: '01', name: 'HEXO BLOG',           year: '2026', stack: 'Hexo / Fluid',     status: '维护中',   image: '/media/proj-01.svg', href: 'https://github.com/zuige66/hexo' },
   { index: '02', name: 'ZUIGE66.GITHUB.IO',   year: '2026', stack: 'CSS / GitHub Pages', status: '已上线', image: '/media/proj-02.svg', href: 'https://github.com/zuige66/zuige66.github.io' },
