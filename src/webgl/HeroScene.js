@@ -34,7 +34,7 @@ export class HeroScene {
     this.updaters = [];
 
     // 取景框：低机位近景（模型归一化后 y ∈ [-1, 1]）
-    // v1 = 旧的半身像；v2 = Tripo 全身像（手伸向镜头，参考图构图）
+    // 编号跟着用户给的模型走：v1 = 第一张（全身），v2 空缺（第二张已丢），v3 = 第三张（腰以上、手前伸）
     this.presets = {
       v1: {
         top: 1.10, bottom: 0.10,
@@ -42,14 +42,14 @@ export class HeroScene {
         camX: 0, targetX: 0, targetY: 0.50,
         fovWide: 30, fovTall: 42, zoom: 1,
       },
-      v2: {
+      v3: {
         top: 1.05, bottom: -0.62,
         camLift: -0.10, lookY: 0.20,
         camX: 0, targetX: 0.07, targetY: 0.20,
         fovWide: 30, fovTall: 42, zoom: 1,
       },
     };
-    this.applyPreset(this.presets.v2, false);
+    this.applyPreset(this.presets.v3, false);
 
     this._setupLights();
     this._setupEnvironment();
@@ -132,7 +132,7 @@ export class HeroScene {
     this.frameCenterX = p.targetX;
   }
 
-  /** 切换构图预设（v1 半身 / v2 全身手部前景） */
+  /** 切换构图预设（v1 全身站姿 / v3 腰以上手部前景） */
   applyPreset(preset, doResize = true) {
     this.preset = { ...preset };
     if (doResize) this.resize();
@@ -179,7 +179,7 @@ export class HeroScene {
     // v1 的五官已经用 tools/bake-face.mjs 烘焙进 baseColor 贴图；
     // 这里只是告诉着色器"这块是脸"：关掉几何提线和曲率压暗，
     // 否则眼窝/鼻翼会被压成一团黑，把烘焙好的五官糊掉。
-    // v2（Tripo 全身像）没有烘焙，按几何自动找头部正面那一块。
+    // v3（Tripo 导出，腰以上）没有烘焙，按几何自动找头部正面那一块。
     const autoFace = this._detectFaceBox(holder, root);
     const faceCenter = inkOpts.faceCenter || autoFace?.center || new THREE.Vector3(0.043, 0.884, 0.11);
     const faceSize = inkOpts.faceSize || autoFace?.size || new THREE.Vector2(0.226, 0.26);

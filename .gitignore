@@ -6,11 +6,8 @@ _tex/
 *.local
 .DS_Store
 Thumbs.db
-
-# 模型源文件太大，不进 git（线上用的是 public/character.min.glb）
-assets/*.glb
-character-1025-full.glb
 .qa/
 
-# 根目录的模型源文件（Tripo 导出，18MB），线上只用 public/ 下压缩过的版本
-anime+character+3d+model.glb
+# 模型归档：原始导出 + 中间产物，单个 18~25MB，只留本地，不进 git
+# 线上只用 public/ 下两份：character.min.glb（v1）、character-v3.min.glb（v3，默认）
+_archive/

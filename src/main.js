@@ -629,9 +629,9 @@ async function init() {
   let webglOK = true;
   let scene, orbit, words;
 
-  // 模型选择：默认 v2 = 腰以上、右手前伸那张；?model=v1 = 全身站姿那张
-  const MODEL = new URLSearchParams(location.search).get('model') === 'v1' ? 'v1' : 'v2';
-  const MODEL_SRC = MODEL === 'v1' ? '/character.min.glb' : '/character-v2.min.glb';
+  // 模型选择：默认 v3 = 腰以上、右手前伸那张；?model=v1 = 全身站姿那张（v2 空缺，第二张模型丢了）
+  const MODEL = new URLSearchParams(location.search).get('model') === 'v1' ? 'v1' : 'v3';
+  const MODEL_SRC = MODEL === 'v1' ? '/character.min.glb' : '/character-v3.min.glb';
   // 新模型没有 normalMap，靠几何法线给黑布料找回褶皱笔触
   const MODEL_INK =
     MODEL === 'v1'
@@ -685,17 +685,17 @@ async function init() {
       },
     });
 
-    // v2 取景更满：正面的散字会盖住导航，统一挪到人物身后；整体缩小一档
+    // v3 取景更满：正面的散字会盖住导航，统一挪到人物身后；整体缩小一档
     const wordsCfg =
-      MODEL === 'v2'
+      MODEL === 'v3'
         ? heroWords.map((w) =>
             // 最大的那句挪到左下角、压到人物身后：它本来是要和人物打架的，
-            // 但 v2 取景太满，留在原位会直接把导航糊掉
+            // 但 v3 取景太满，留在原位会直接把导航糊掉
             w.z > 0 ? { ...w, x: -0.86, y: -0.72, z: -1.35 } : w
           )
         : heroWords;
     words = new HeroWords(scene.scene, scene.camera, wordsCfg, scene.viewportH);
-    if (MODEL === 'v2') words.setScale(0.46);
+    if (MODEL === 'v3') words.setScale(0.46);
 
     scene.addUpdater((t, dt, pointer) => {
       // 人物：轻微呼吸 + 跟随指针左右转（夹在 ±41°）

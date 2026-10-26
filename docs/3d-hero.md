@@ -1,21 +1,27 @@
 # 首页 3D 人物与环绕导航
 
 > 对应文件：`src/webgl/HeroScene.js`、`src/webgl/InkMaterial.js`、`src/webgl/OrbitNav.js`、`src/webgl/HeroWords.js`、`src/main.js`
-> 资源文件：`public/character.min.glb`（v1）、`public/character-v2.min.glb`（v2）
+> 资源文件：`public/character.min.glb`（v1）、`public/character-v3.min.glb`（v3，默认）
+> 原始模型与中间产物：`_archive/models/`（不进 git）
 
 ---
 
 ## 1. 两套模型，URL 切换
 
+编号跟着「用户给的第几张模型」走，所以没有 v2——第二张（后背有东西）拿到手之前先空着。
+
 | 版本 | 文件 | 来源 | 特征 |
 |---|---|---|---|
-| v1 | `public/character.min.glb` | 全身站姿那张（`character-1025-full.glb`），源文件自带 baseColor + normal + metallicRoughness | 3.03 MB，377,351 三角面，**全身 1.89 m** |
-| v2（默认） | `public/character-v2.min.glb` | `anime+character+3d+model.glb`，腰以上、右手直伸向镜头 | 3.74 MB，501,930 三角面，**半身 0.95 m** |
+| v1 | `public/character.min.glb` | 第一张，全身站姿（`_archive/models/character-1025-full.glb`），源文件自带 baseColor + normal + metallicRoughness | 3.03 MB，377,351 三角面，**全身 1.89 m** |
+| v3（默认） | `public/character-v3.min.glb` | 第三张，`_archive/models/anime+character+3d+model.glb`，腰以上、右手直伸向镜头 | 3.74 MB，501,930 三角面，**半身 0.95 m** |
 
 ```
+http://127.0.0.1:5173/              # 默认 v3
 http://127.0.0.1:5173/?model=v1     # 换成全身那张
-http://127.0.0.1:5173/?model=v2     # 默认
 ```
+
+`public/` 下只留这两份。文件名带 `.min` 表示已经过 resize/webp/meshopt 压缩，
+原始导出和中间产物一律放 `_archive/models/`，被 `.gitignore` 忽略，不会进仓库也不会进构建。
 
 `main.js` 里 `MODEL / MODEL_SRC / MODEL_INK / preset / 导航参数` 全部按版本分支，旧模型的表现不受新参数影响。
 
@@ -23,29 +29,31 @@ http://127.0.0.1:5173/?model=v2     # 默认
 
 | 顺序 | 画面内容 | 本地文件 | 现在干什么用 |
 |---|---|---|---|
-| 第一个 | 全身站姿，右手前伸，露鞋和裤脚 | `character-1025-full.glb`（19.9 MB，451,462 面）→ `assets/character-clean.glb`（网格清理，436,831 面）→ `assets/character-base.glb`（减面 377,351） | 压成 **v1** `public/character.min.glb` |
-| 第二个 | 后背有东西 | **本机已找不到**（`Downloads` / `Desktop` 都没有），估计下载同名被第三个覆盖 | 未使用 |
-| 第三个 | 腰以上，右手直伸向镜头，黑衣长发 | `anime+character+3d+model.glb`（18.79 MB，md5 `bd532146feb4…`），`public/model-new.glb` 与它逐字节相同 | 压成 **v2**，默认在用 |
+| 第一个 | 全身站姿，右手前伸，露鞋和裤脚 | `character-1025-full.glb`（19.9 MB，451,462 面）→ `character-clean.glb`（网格清理，436,831 面）→ `character-base.glb`（减面 377,351） | 压成 **v1** `public/character.min.glb` |
+| 第二个 | 后背有东西 | **本机已找不到**（`Downloads` / `Desktop` 都没有），估计下载同名被第三个覆盖 | 空着，等拿到再补 `v2` |
+| 第三个 | 腰以上，右手直伸向镜头，黑衣长发 | `anime+character+3d+model.glb`（18.79 MB，md5 `bd532146feb4…`），`model-new.glb` 与它逐字节相同 | 压成 **v3**，默认在用 |
 
-判断依据不是文件名，而是**网格指纹**：v2 的网格名 `tripo_mesh_256e1a95-…`、501,930 面、293,493 顶点与第三个完全一致；
+以上六个原始文件都在 `_archive/models/`，压缩中间产物在 `_archive/models/pipeline/`。
+
+判断依据不是文件名，而是**网格指纹**：v3 的网格名 `tripo_mesh_256e1a95-…`、501,930 面、293,493 顶点与第三张完全一致；
 v1 的 377,351 面、222,141 顶点与 `character-base.glb` 完全一致，后者来自 `character-1025-full.glb`（451,462 面 / 261,501 顶点）。
 
 想确认某份文件是哪张，跑这个就够：
 
 ```bash
-md5sum anime+character+3d+model.glb public/model-new.glb   # 两个都是 bd532146feb4…
-npx gltf-transform inspect public/character-v2.min.glb | grep TRIANGLES
+md5sum _archive/models/anime+character+3d+model.glb _archive/models/model-new.glb   # 都是 bd532146feb4…
+npx gltf-transform inspect public/character-v3.min.glb | grep TRIANGLES
 ```
 
-### v2 资产处理（从 17.9 MB 压到 3.74 MB）
+### v3 资产处理（从 17.9 MiB 压到 3.74 MB）
 
-原始文件 `anime+character+3d+model.glb`（Tripo 导出，18.8 MB，未进 git）按顺序处理：
+原始文件 `_archive/models/anime+character+3d+model.glb`（Tripo 导出，18.79 MB，不进 git）按顺序处理：
 
 ```bash
-npx gltf-transform resize 源.glb .qa/v2-1-resize.glb --width 2048 --height 2048
-npx gltf-transform webp   .qa/v2-1-resize.glb .qa/v2-2-webp.glb --quality 92
-npx gltf-transform weld   .qa/v2-2-webp.glb .qa/v2-3-weld.glb
-npx gltf-transform meshopt .qa/v2-3-weld.glb public/character-v2.min.glb --level high
+npx gltf-transform resize 源.glb _archive/models/pipeline/v3-1-resize.glb --width 2048 --height 2048
+npx gltf-transform webp   _archive/models/pipeline/v3-1-resize.glb _archive/models/pipeline/v3-2-webp.glb --quality 92
+npx gltf-transform weld   _archive/models/pipeline/v3-2-webp.glb _archive/models/pipeline/v3-3-weld.glb
+npx gltf-transform meshopt _archive/models/pipeline/v3-3-weld.glb public/character-v3.min.glb --level high
 ```
 
 没有做减面：`simplify` 会啃掉手指与五官的细节，这个模型的价值恰恰在那只手上。
@@ -55,7 +63,7 @@ npx gltf-transform meshopt .qa/v2-3-weld.glb public/character-v2.min.glb --level
 ## 2. 墨线着色器：新增「无 normalMap」分支
 
 v1 的手绘细线全部烙在 normalMap 里，所以旧着色器有「用掠射光把法线图打成硬边阴影」这一步。
-v2 只有一张 4096 的 baseColor（现在压到 2048 webp），**没有法线图**，黑外套直接塌成一块死黑。
+v3 只有一张 4096 的 baseColor（现在压到 2048 webp），**没有法线图**，黑外套直接塌成一块死黑。
 
 为此在 `InkMaterial.js` 增加四个 uniform：
 
@@ -79,7 +87,7 @@ tone = max(tone, lift * darkMask);
 - **脸区判定**从 `abs(Ng.z)` 改成 `ndv`（视线夹角）。原来用世界 z，人物一转头，脸区遮罩就跟着漂走。
 - **网点下限**从 `smoothstep(0.06, 0.26)` 抬到 `smoothstep(0.18, 0.40)`，纯黑外套不再长出一层灰麻点。
 
-v2 的墨线参数（`main.js` 的 `MODEL_INK`）：`levelLo 0.32 / levelHi 0.62 / blackLift 0.55 / edgeLift 0.72 / halftone 0.40`。
+v3 的墨线参数（`main.js` 的 `MODEL_INK`）：`levelLo 0.32 / levelHi 0.62 / blackLift 0.55 / edgeLift 0.72 / halftone 0.40`。
 
 ---
 
@@ -87,7 +95,7 @@ v2 的墨线参数（`main.js` 的 `MODEL_INK`）：`levelLo 0.32 / levelHi 0.62
 
 相机距离由取景框反推：`z = (top - bottom) / (2 * tan(fov/2))`，所以调 `top/bottom` 就是调镜头远近。
 
-| 字段 | v1 | v2 | 说明 |
+| 字段 | v1 | v3 | 说明 |
 |---|---|---|---|
 | `top` / `bottom` | 1.10 / 0.10 | 1.05 / -0.62 | 模型归一化后身高 2.0（y ∈ [-1, 1]） |
 | `targetX` / `targetY` | 0 / 0.50 | 0.07 / 0.20 | 视线落点，决定画面中心 |
@@ -95,7 +103,7 @@ v2 的墨线参数（`main.js` 的 `MODEL_INK`）：`levelLo 0.32 / levelHi 0.62
 | `fovWide` / `fovTall` | 30 / 42 | 30 / 42 | 竖屏换大 fov |
 | `zoom` | 1 | 1.14（仅竖屏生效） | 竖屏拉远，避免伸出的手被右边缘切掉 |
 
-v2 的构图来自参考图：**脸在上三分之一、前伸的手占右下前景**。手的顶点在归一化空间是 `x 0.48~0.98, y -0.30~0.27, z 0.80~1.06`，离相机极近，透视会把它放大到约 1.6 倍——这就是参考图那种「手怼脸」的压迫感来源。
+v3 的构图来自参考图：**脸在上三分之一、前伸的手占右下前景**。手的顶点在归一化空间是 `x 0.48~0.98, y -0.30~0.27, z 0.80~1.06`，离相机极近，透视会把它放大到约 1.6 倍——这就是参考图那种「手怼脸」的压迫感来源。
 
 ---
 
@@ -106,7 +114,7 @@ v2 的构图来自参考图：**脸在上三分之一、前伸的手占右下前
 人物只左右各转 **30°**（`MAX_YAW`），如果导航绕整圈，大半时间标签在脑后或飞出画面。
 所有标签落在同一条**倾斜椭圆轨道**上，轨道摆角夹在 `±0.50 rad`（约 29°）：
 
-- 标签方位角：`-arc ~ +arc`（v2 `arc = 0.90`，v1 `1.18`）
+- 标签方位角：`-arc ~ +arc`（v3 `arc = 0.90`，v1 `1.18`）
 - 轨道摆角：`-pointer.x * 0.52 - yaw * 0.12 + 滚动进度 + 慢呼吸`，夹在 ±0.50
 
 ### 4.2 摆角方向是反的
@@ -161,7 +169,7 @@ xScale = min(xScale, (halfW * 0.80 - labelHalfW) / reach);
 
 ### 4.7 各版本参数（`main.js`）
 
-| 参数 | v1 | v2 |
+| 参数 | v1 | v3 |
 |---|---|---|
 | `baseSize` | 0.075 | 0.15 |
 | `arc` | 1.18 | 0.90 |
@@ -208,7 +216,7 @@ v1 相机极近（z ≈ 1.87），轨道半径必须收到 0.86，否则标签�
 ## 6. 已知问题 / 待办
 
 - **面数偏大**：50 万三角面单次 draw call，桌面独显无压力，集显/移动端未实测。若卡顿，优先做 `simplify --ratio 0.6`（注意保护手部）。
-- **v1 的标签偏小**：v1 是全身像，相机被拉到 z ≈ 1.87（v2 是 3.12），同样的世界尺寸会贴到脸上，
-  `baseSize` 只能压到 0.075，视觉上比 v2 小一圈；v1 只作对比用，不追求效果。
+- **v1 的标签偏小**：v1 是全身像，相机被拉到 z ≈ 1.87（v3 是 3.12），同样的世界尺寸会贴到脸上，
+  `baseSize` 只能压到 0.075，视觉上比 v3 小一圈；v1 只作对比用，不追求效果。
 - **`public/model-new.glb`**（18 MB）是历史上传的原始模型副本，代码已不引用，可以从仓库删掉省体积。
-- v2 无骨骼、无动画，呼吸与转动都是整体变换，幅度需克制，否则手会穿出画面。
+- v3 无骨骼、无动画，呼吸与转动都是整体变换，幅度需克制，否则手会穿出画面。
