@@ -113,6 +113,8 @@ URL=http://127.0.0.1:5173/ LINK='#blogList a' node tools/veil-frames.mjs
 URL=http://127.0.0.1:5173/ node tools/veil-check.mjs    # 真实点击、新窗口、返回态
 ```
 
+验线上同一套脚本就能跑，换成 `URL=https://zuiges.com/`。脚本的 `newContext` 开了 `ignoreHTTPSErrors`，否则本地环境下的 Playwright 会以 `ERR_CERT_COMMON_NAME_INVALID` 拒绝加载（同一域名 curl 校验却是通的，属于本地网络/代理的干扰，站点本身证书没问题）。
+
 `veil-frames.mjs` 会把 `window.open` 打桩（否则新窗口一开，页面进后台、动画冻结，抓到的帧全是错位的）。正常时间线：
 
 ```

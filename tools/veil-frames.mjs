@@ -14,7 +14,7 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
 });
 
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
 await ctx.addInitScript(() => {
   window.__opened = [];
   window.open = (u) => { window.__opened.push(u); return { set opener(_v) {} }; };
