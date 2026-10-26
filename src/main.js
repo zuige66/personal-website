@@ -34,6 +34,41 @@ gsap.ticker.add((time) => lenis.raf(time * 1000));
 gsap.ticker.lagSmoothing(0);
 
 /* ============================================================
+   1b. 滚动速度 → 轻微斜切
+   ------------------------------------------------------------
+   只作用在中等高度的容器上（区块内层、图片网格），不做整页 skew：
+   #main 有近两万像素高，绕中心斜 2° 边缘会甩出四百多像素。
+   ============================================================ */
+const SKEW_TARGETS =
+  '.statement .wrap, .works__head, .projects .wrap, .blog .wrap, .photo-grid, .resume .wrap, .about .wrap, .contact .wrap';
+
+function buildScrollSkew() {
+  const els = $$(SKEW_TARGETS);
+  if (!els.length) return;
+
+  const setters = els.map((el) => gsap.quickSetter(el, 'skewY', 'deg'));
+  const proxy = { skew: 0 };
+  const clamp = gsap.utils.clamp(-2.2, 2.2);
+  const apply = () => setters.forEach((set) => set(proxy.skew));
+
+  ScrollTrigger.create({
+    onUpdate: (self) => {
+      // 速度 px/s → 角度，保留一位小数避免每帧都起新 tween
+      const next = clamp(Math.round((self.getVelocity() / -1100) * 10) / 10);
+      if (Math.abs(next) <= Math.abs(proxy.skew)) return;
+      proxy.skew = next;
+      gsap.to(proxy, {
+        skew: 0,
+        duration: 0.8,
+        ease: 'power3',
+        overwrite: true,
+        onUpdate: apply,
+      });
+    },
+  });
+}
+
+/* ============================================================
    2. 内容渲染
    ============================================================ */
 function renderContent() {
@@ -184,6 +219,22 @@ function splitChars(el) {
   return [...el.querySelectorAll('.w')];
 }
 
+/**
+ * 把标题按 <br> 拆成行，每行套一个 overflow:hidden 的窗口。
+ * 这样动画作用在内层，字是"从遮罩里升出来"，不是整块淡入。
+ */
+function splitTitleLines(el) {
+  const lines = el.innerHTML.split(/<br\s*\/?>/i);
+  if (lines.length < 2) {
+    el.innerHTML = `<span class="tl"><span class="tl__i">${el.innerHTML}</span></span>`;
+  } else {
+    el.innerHTML = lines
+      .map((line) => `<span class="tl"><span class="tl__i">${line.trim()}</span></span>`)
+      .join('');
+  }
+  return [...el.querySelectorAll('.tl__i')];
+}
+
 /* ============================================================
    4. 滚动动效
    ============================================================ */
@@ -237,15 +288,20 @@ function buildScrollAnimations() {
     };
   });
 
-  // —— 区块标题：遮罩上升 ——
+  // —— 区块标题：逐行遮罩升起 ——
   $$('.sec-title').forEach((el) => {
-    gsap.from(el, {
-      yPercent: 26,
-      opacity: 0,
-      duration: 1.1,
-      ease: 'power3.out',
-      scrollTrigger: { trigger: el, start: 'top 88%' },
-    });
+    const lines = splitTitleLines(el);
+    gsap.fromTo(
+      lines,
+      { yPercent: 116 },
+      {
+        yPercent: 0,
+        duration: 1.15,
+        ease: 'power4.out',
+        stagger: 0.1,
+        scrollTrigger: { trigger: el, start: 'top 88%' },
+      }
+    );
   });
 
   // —— 列表行：错位淡入 ——
@@ -290,6 +346,32 @@ function buildScrollAnimations() {
       delay: (i % 4) * 0.07,
       scrollTrigger: { trigger: el, start: 'top 94%' },
     });
+  });
+
+  // —— 图片：视差（滚动中与容器不同速，深一点的层走得多） ——
+  $$('.photo-item img').forEach((img) => {
+    gsap.fromTo(
+      img,
+      { yPercent: -5, scale: 1.14 },
+      {
+        yPercent: 5,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: img.closest('.photo-item'),
+          start: 'top bottom',
+          end: 'bottom top',
+          scrub: true,
+        },
+      }
+    );
+  });
+
+  // —— 全局滚动进度 ——
+  gsap.set('#progressBar', { scaleX: 0 });
+  ScrollTrigger.create({
+    start: 0,
+    end: 'max',
+    onUpdate: (self) => gsap.set('#progressBar', { scaleX: self.progress }),
   });
 
   // —— 联系大字：随滚动逐行升起 ——
@@ -574,6 +656,8 @@ async function init() {
   const navAllowed = () => window.innerWidth / window.innerHeight >= 0.9;
   let navFade = 1;
   let orbitScrollFade = 0;   // 0 = 全显，1 = 完全收起
+  // 02 区块里人物的"淡影"强度：竖屏人物占画面太大，压得更淡
+  const ghostAlpha = () => (window.innerWidth / window.innerHeight < 0.9 ? 0.08 : 0.12);
 
   try {
     const canvas = $('#gl');
@@ -677,13 +761,36 @@ async function init() {
       }
       if (words) words.setVisible(1 - Math.max(0, (p - 0.45) / 0.5));
       orbitScrollFade = Math.max(0, (p - 0.3) / 0.45);
-      $('#gl').style.opacity = String(1 - Math.max(0, (p - 0.7) / 0.3));
+      // 首屏结束不收到 0，留一点淡影（ghostAlpha）进 02 区块，交给下面那个 trigger 接管
+      $('#gl').style.opacity = String(Math.max(ghostAlpha(), 1 - Math.max(0, (p - 0.7) / 0.3)));
     },
-    onLeave: () => scene?.setActive(false),
     onEnterBack: () => scene?.setActive(true),
   });
 
+  // 02 宣言：人物退成淡影继续推远，滚过去之后彻底收掉、停止渲染
+  ScrollTrigger.create({
+    trigger: '.statement',
+    start: 'top top',
+    end: 'bottom top',
+    onEnter: () => scene?.setActive(true),
+    onEnterBack: () => scene?.setActive(true),
+    onUpdate: (self) => {
+      if (!scene) return;
+      const p = self.progress;
+      // 前 65% 只轻微减弱（保持"贯穿"的连续感），最后 35% 才收干净
+      const fade = p < 0.65 ? 1 - p * 0.3 : 0.805 * (1 - (p - 0.65) / 0.35);
+      $('#gl').style.opacity = String(ghostAlpha() * Math.max(0, fade));
+      // 接着首屏末端的 0.84 继续推远，衔接处不会跳
+      scene.camera.position.z = scene.baseZ * (0.84 + p * 0.55);
+    },
+    onLeave: () => {
+      $('#gl').style.opacity = '0';
+      scene?.setActive(false);
+    },
+  });
+
   buildScrollAnimations();
+  buildScrollSkew();
 
   // 3D 导航交互
   if (webglOK && orbit) {
