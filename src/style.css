@@ -723,8 +723,7 @@ p {
 .statement {
   position: relative;
   z-index: 3;
-  /* 透明：02 区块里人物会以淡影"贯穿"过来，压在上面的是纸色文字 */
-  background: transparent;
+  background: var(--paper);
   padding: clamp(80px, 14vh, 180px) 0 clamp(60px, 10vh, 140px);
 }
 

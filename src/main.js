@@ -38,7 +38,13 @@ gsap.ticker.lagSmoothing(0);
    ------------------------------------------------------------
    只作用在中等高度的容器上（区块内层、图片网格），不做整页 skew：
    #main 有近两万像素高，绕中心斜 2° 边缘会甩出四百多像素。
+
+   幅度刻意压到几乎看不出来（最大 0.3°）：再大就是"页面在晃"，读久了头晕。
+   想调大就改 SKEW_MAX / SKEW_VEL 两个常量。
    ============================================================ */
+const SKEW_MAX = 0.3;    // 度
+const SKEW_VEL = 12000;  // px/s，滚到多快才吃满上限
+
 const SKEW_TARGETS =
   '.statement .wrap, .works__head, .projects .wrap, .blog .wrap, .photo-grid, .resume .wrap, .about .wrap, .contact .wrap';
 
@@ -48,18 +54,18 @@ function buildScrollSkew() {
 
   const setters = els.map((el) => gsap.quickSetter(el, 'skewY', 'deg'));
   const proxy = { skew: 0 };
-  const clamp = gsap.utils.clamp(-2.2, 2.2);
+  const clamp = gsap.utils.clamp(-SKEW_MAX, SKEW_MAX);
   const apply = () => setters.forEach((set) => set(proxy.skew));
 
   ScrollTrigger.create({
     onUpdate: (self) => {
-      // 速度 px/s → 角度，保留一位小数避免每帧都起新 tween
-      const next = clamp(Math.round((self.getVelocity() / -1100) * 10) / 10);
+      // 速度 px/s → 角度，量化到 0.05° 避免每帧都起新 tween
+      const next = clamp(Math.round((self.getVelocity() / -SKEW_VEL) * 20) / 20);
       if (Math.abs(next) <= Math.abs(proxy.skew)) return;
       proxy.skew = next;
       gsap.to(proxy, {
         skew: 0,
-        duration: 0.8,
+        duration: 0.7,
         ease: 'power3',
         overwrite: true,
         onUpdate: apply,
@@ -656,8 +662,6 @@ async function init() {
   const navAllowed = () => window.innerWidth / window.innerHeight >= 0.9;
   let navFade = 1;
   let orbitScrollFade = 0;   // 0 = 全显，1 = 完全收起
-  // 02 区块里人物的"淡影"强度：竖屏人物占画面太大，压得更淡
-  const ghostAlpha = () => (window.innerWidth / window.innerHeight < 0.9 ? 0.08 : 0.12);
 
   try {
     const canvas = $('#gl');
@@ -761,33 +765,14 @@ async function init() {
       }
       if (words) words.setVisible(1 - Math.max(0, (p - 0.45) / 0.5));
       orbitScrollFade = Math.max(0, (p - 0.3) / 0.45);
-      // 首屏结束不收到 0，留一点淡影（ghostAlpha）进 02 区块，交给下面那个 trigger 接管
-      $('#gl').style.opacity = String(Math.max(ghostAlpha(), 1 - Math.max(0, (p - 0.7) / 0.3)));
+      $('#gl').style.opacity = String(Math.max(0, 1 - Math.max(0, (p - 0.7) / 0.3)));
     },
     onEnterBack: () => scene?.setActive(true),
+    onLeave: () => scene?.setActive(false),
   });
 
-  // 02 宣言：人物退成淡影继续推远，滚过去之后彻底收掉、停止渲染
-  ScrollTrigger.create({
-    trigger: '.statement',
-    start: 'top top',
-    end: 'bottom top',
-    onEnter: () => scene?.setActive(true),
-    onEnterBack: () => scene?.setActive(true),
-    onUpdate: (self) => {
-      if (!scene) return;
-      const p = self.progress;
-      // 前 65% 只轻微减弱（保持"贯穿"的连续感），最后 35% 才收干净
-      const fade = p < 0.65 ? 1 - p * 0.3 : 0.805 * (1 - (p - 0.65) / 0.35);
-      $('#gl').style.opacity = String(ghostAlpha() * Math.max(0, fade));
-      // 接着首屏末端的 0.84 继续推远，衔接处不会跳
-      scene.camera.position.z = scene.baseZ * (0.84 + p * 0.55);
-    },
-    onLeave: () => {
-      $('#gl').style.opacity = '0';
-      scene?.setActive(false);
-    },
-  });
+  // 02 宣言：不做贯穿。宣言区是不透明的纸色底，人物滚出去就停渲染，
+  // 之前的"淡影穿透"在矮窗口里会压住正文，已回滚（见 docs/3d-hero.md 5.1）。
 
   buildScrollAnimations();
   buildScrollSkew();
