@@ -653,20 +653,35 @@ async function init() {
           dotSize: 2.8,
         };
 
-  // 人物左右偏转上限 30°：再大就把侧脸和后脑勺露出来，画面也铺太满
-  const MAX_YAW = (30 * Math.PI) / 180;
+  // 竖屏判定：0.9 是平板竖持与手机的分界（iPad 竖着是 0.69，横着 1.33）
+  const isPortrait = () => window.innerWidth / window.innerHeight < 0.9;
+  // 人物左右偏转上限：横屏 30°（再大就露侧脸/后脑勺）；竖屏画面小，转到 30° 会晃，只给 12°
+  const maxYaw = () => ((isPortrait() ? 12 : 30) * Math.PI) / 180;
   let yaw = 0;
 
-  // 竖屏（手机）不放环绕导航：画面太窄，六个标签会全叠在脸上，
-  // 移动端直接用 HUD 里的 INDEX 目录
-  const navAllowed = () => window.innerWidth / window.innerHeight >= 0.9;
+  // 触屏用相对拖动（拖多少转多少），不跟绝对坐标，才不会有"手指一动就甩出去"的感觉
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  let yawTarget = 0;
+  let dragging = false;
+  let dragAxis = null;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragBaseYaw = 0;
+
+  // 竖屏也保留环绕（取景拉远后标签有地方站），太窄（<300px）才彻底收起
+  const navAllowed = () => window.innerWidth >= 300;
+  // 散字只在横屏露脸，竖屏会跟四角标签打架
+  const wordsAllowed = () => window.innerWidth / window.innerHeight >= 0.9;
   let navFade = 1;
   let orbitScrollFade = 0;   // 0 = 全显，1 = 完全收起
+
+  // 按屏幕比例挑构图：竖屏用 v3P，横屏用 v3（v1 没有竖屏版，退回原预设）
+  const pickPreset = () => scene.presets[isPortrait() ? `${MODEL}P` : MODEL] || scene.presets[MODEL];
 
   try {
     const canvas = $('#gl');
     scene = new HeroScene(canvas);
-    scene.applyPreset(scene.presets[MODEL]);
+    scene.applyPreset(pickPreset());
     loaderText.textContent = '正在载入代码与骨骼';
 
     await scene.loadCharacter(MODEL_SRC, (p) => {
@@ -674,11 +689,18 @@ async function init() {
       setProgress(0.1 + p * 0.86);
     }, MODEL_INK);
 
-    orbit = new OrbitNav(scene.scene, scene.camera, nav, {
+    // 竖屏只留 4 个标签：390px 的宽度塞不下 6 个，缩到能放下时字已经看不清了
+    const NAV_PORTRAIT = ['works', 'projects', 'photos', 'about'];
+    const orbitItems = isPortrait() ? nav.filter((n) => NAV_PORTRAIT.includes(n.id)) : nav;
+
+    orbit = new OrbitNav(scene.scene, scene.camera, orbitItems, {
       // v1 是全身像，相机更近（z≈1.87），轨道要收回来，否则标签会顶出画面
       ...(MODEL === 'v1'
         ? { baseSize: 0.075, arc: 1.18, ringR: 0.86, baseY: 0.52, tiltK: 0.06, tiltX: 0.14 }
-        : { baseSize: 0.15, arc: 0.90, ringR: 1.42, baseY: 0.46, tiltK: 0.13, tiltX: 0.18 }),
+        : isPortrait()
+          // 竖屏：相机远（z≈4.04），轨道反而要放大才包得住人；标签再小一档
+          ? { baseSize: 0.095, arc: 1.00, ringR: 2.20, baseY: 0.32, tiltK: 0.10, tiltX: 0.30 }
+          : { baseSize: 0.15, arc: 0.90, ringR: 1.42, baseY: 0.46, tiltK: 0.13, tiltX: 0.18 }),
       onHover: (item) => {
         document.body.classList.toggle('cursor-hot', !!item);
         words?.setDim(item ? 0.3 : 1);
@@ -696,13 +718,17 @@ async function init() {
         : heroWords;
     words = new HeroWords(scene.scene, scene.camera, wordsCfg, scene.viewportH);
     if (MODEL === 'v3') words.setScale(0.46);
+    // 竖屏不摆散字：屏幕太小，字会压到四角的导航标签上，反而更乱
+    words.setVisible(wordsAllowed() ? 1 : 0);
 
     scene.addUpdater((t, dt, pointer) => {
-      // 人物：轻微呼吸 + 跟随指针左右转（夹在 ±41°）
+      // 人物：轻微呼吸 + 左右转（鼠标跟指针，触屏跟拖动位移），上限按屏幕比例给
       if (scene.character) {
-        const target = pointer.x * MAX_YAW + Math.sin(t * 0.24) * 0.018;
+        const limit = maxYaw();
+        const want = coarse ? yawTarget : pointer.x * limit;
+        const target = want + Math.sin(t * 0.24) * 0.018;
         yaw += (target - yaw) * (1 - Math.exp(-dt * 7));
-        yaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, yaw));
+        yaw = Math.max(-limit, Math.min(limit, yaw));
 
         scene.character.position.y = Math.sin(t * 0.8) * 0.012;
         scene.character.rotation.y = yaw;
@@ -763,7 +789,7 @@ async function init() {
       if (scene) {
         scene.camera.position.z = scene.baseZ * lerp(1, 0.84, p);
       }
-      if (words) words.setVisible(1 - Math.max(0, (p - 0.45) / 0.5));
+      if (words) words.setVisible((1 - Math.max(0, (p - 0.45) / 0.5)) * (wordsAllowed() ? 1 : 0));
       orbitScrollFade = Math.max(0, (p - 0.3) / 0.45);
       $('#gl').style.opacity = String(Math.max(0, 1 - Math.max(0, (p - 0.7) / 0.3)));
     },
@@ -790,9 +816,55 @@ async function init() {
       orbit.setHover(hit);
     });
 
+    /* 触屏：相对拖动
+       以前是拿手指的绝对坐标映射角度，手一放到屏幕右侧人物就立刻转过去；
+       改成"从按下那一刻起算位移"，拖多少转多少，松手回正。
+       纵向滑动优先给页面滚动，只有横向位移明显大于纵向才接管。 */
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      const t0 = e.touches[0];
+      dragging = true;
+      dragAxis = null;
+      dragStartX = t0.clientX;
+      dragStartY = t0.clientY;
+      dragBaseYaw = yawTarget;
+    };
+
+    const onTouchMove = (e) => {
+      if (!dragging || e.touches.length !== 1) return;
+      const t0 = e.touches[0];
+      const dx = t0.clientX - dragStartX;
+      const dy = t0.clientY - dragStartY;
+      if (!dragAxis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        dragAxis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      }
+      if (dragAxis !== 'x') return;
+      const limit = maxYaw();
+      // 半个屏宽拖满整个摆幅，比"全屏才拖满"更跟手
+      const span = Math.max(200, window.innerWidth * 0.5);
+      yawTarget = Math.max(-limit, Math.min(limit, dragBaseYaw + (dx / span) * limit));
+    };
+
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      dragAxis = null;
+      yawTarget = 0;   // 松手回正
+    };
+
+    hero.addEventListener('touchstart', onTouchStart, { passive: true });
+    hero.addEventListener('touchmove', onTouchMove, { passive: true });
+    hero.addEventListener('touchend', endDrag);
+    hero.addEventListener('touchcancel', endDrag);
+
     hero.addEventListener('click', (e) => {
       if (e.target.closest('a, button')) return;
-      const hit = orbit.raycast(pointerNDC);
+      // 触屏点击不会先来一次 pointermove，NDC 得用点击坐标现算，否则手机上点不中标签
+      const ndc = {
+        x: (e.clientX / window.innerWidth) * 2 - 1,
+        y: -((e.clientY / window.innerHeight) * 2 - 1),
+      };
+      const hit = orbit.raycast(ndc);
       if (hit) {
         const target = document.getElementById(hit.data.id);
         if (target) lenis.scrollTo(target, { duration: 1.8 });
@@ -800,12 +872,15 @@ async function init() {
     });
   }
 
-  // 窗口尺寸变化后重排 3D 文字
+  // 尺寸变化：竖横切换要换构图预设，再重排 3D 文字
   let rt;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
     rt = setTimeout(() => {
-      if (words && scene) words.setViewportH(scene.viewportH);
+      if (!scene) return;
+      scene.applyPreset(pickPreset(), false);
+      scene.resize();
+      words?.setViewportH(scene.viewportH);
     }, 180);
   });
 }

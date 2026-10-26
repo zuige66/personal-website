@@ -58,6 +58,8 @@ export class OrbitNav {
     this.tiltK = tiltK;
     this.tiltX = tiltX;
     this.ringR = ringR;
+    // 竖屏菱形排布的三个可调项：横向半径 / 纵向半径 / 标签高度（都是视口半宽、半高的比例）
+    this.portraitFrame = { rx: 0.80, ry: 0.86, size: 0.064 };
 
     const n = navData.length;
 
@@ -211,6 +213,9 @@ export class OrbitNav {
   }
 
   update(t, dt, pointer) {
+    // 竖屏走另一套排布：390px 的宽度塞不下横着绕的一圈标签
+    if (this.camera.aspect < 0.9) return this._updatePortrait(t, dt, pointer);
+
     // 摆角 = 指针 + 人物偏转 + 慢呼吸，全部夹在扇区内。
     // 方向是【反的】：鼠标往右 → 轨道往左转。
     // 理由很实际 —— 往右滑是为了把右边的 ABOUT 转进来点得到，
@@ -286,6 +291,56 @@ export class OrbitNav {
     this.guides.position.y = tiltY;
     this.guides.material.opacity = 0.8 * this.visible;
     this.guides.visible = this.visible > 0.01;
+  }
+
+  /**
+   * 竖屏排布：把环绕从「水平面绕一圈」换成「屏幕平面上的竖椭圆」。
+   * 手机上横向只有 390px，六个标签横着排必然叠在一起；
+   * 竖着有 844px 可用，四个角各放一块（菱形），字能放大到看得清，
+   * 而且不会压在头顶和手心上。z 固定 0，等于没有前后透视差，尺寸统一。
+   */
+  _updatePortrait(t, dt, pointer) {
+    const target =
+      -pointer.x * 0.30 - this.yaw * 0.10 + this.scrollRot * 0.6 + Math.sin(t * 0.33) * 0.04;
+    this.sway += (target - this.sway) * Math.min(1, dt * 2.4);
+    this.sway = THREE.MathUtils.clamp(this.sway, -0.45, 0.45);
+
+    const halfH = this.camera.position.z * Math.tan((this.camera.fov * Math.PI) / 360);
+    const halfW = halfH * (this.camera.aspect || 0.5);
+    const { rx, ry, size } = this.portraitFrame;
+    const rX = halfW * rx;
+    const rY = halfH * ry;
+    const h = halfH * size;   // 屏幕上一块标签的高度，跟视口高挂钩，换机型不变
+    const tiltY = pointer.y * 0.04;
+    const n = this.items.length;
+
+    for (let i = 0; i < n; i++) {
+      const it = this.items[i];
+      // 从 45° 起、每 90° 一格：四个角，避开正上方（头顶）和正下方（手）
+      const a = Math.PI * 0.25 + (i / n) * Math.PI * 2 + this.sway;
+      const x = Math.cos(a) * rX;
+      const y = Math.sin(a) * rY + tiltY + Math.sin(t * 0.62 + it.phase) * 0.008;
+
+      it.mesh.position.set(x, y, 0);
+      it.mesh.quaternion.copy(this.camera.quaternion);
+      this._q.setFromAxisAngle(this._zAxis, it.roll);
+      it.mesh.quaternion.multiply(this._q);
+
+      const isHover = this.hovered === it;
+      it.targetScale = isHover ? 1.12 : 1;
+      it.scale += (it.targetScale - it.scale) * Math.min(1, dt * 9);
+
+      const s = h * it.scale;
+      it.mesh.scale.set(s * it.aspect, s, 1);
+
+      it.hoverMix += ((isHover ? 1 : 0) - it.hoverMix) * Math.min(1, dt * 12);
+      it.matN.opacity = (1 - it.hoverMix) * this.visible;
+      it.matH.opacity = it.hoverMix * this.visible;
+      it.mesh.visible = this.visible > 0.01;
+    }
+
+    // 那圈虚线是水平椭圆，竖屏下跟这套排布对不上，直接藏掉
+    this.guides.visible = false;
   }
 
   /** 返回被指向的导航项 */

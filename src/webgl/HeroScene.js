@@ -48,6 +48,14 @@ export class HeroScene {
         camX: 0, targetX: 0.07, targetY: 0.20,
         fovWide: 30, fovTall: 42, zoom: 1,
       },
+      // 竖屏（aspect < 0.9）：手机屏幕只有 390px 宽，v3 的投影宽度会到 2000px 以上，
+      // 等于把人物裁掉八成。这里把取景框撑到 ±1.55，相机退到 z≈4，头发和手都能进画面。
+      v3P: {
+        top: 1.75, bottom: -1.75,
+        camLift: -0.05, lookY: 0.10,
+        camX: 0, targetX: 0.02, targetY: 0.10,
+        fovWide: 30, fovTall: 42, zoom: 1,
+      },
     };
     this.applyPreset(this.presets.v3, false);
 
