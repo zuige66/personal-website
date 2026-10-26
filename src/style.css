@@ -186,7 +186,7 @@ p {
   position: absolute;
   inset: 0;
   background: var(--ink);
-  transform: translateY(102%);
+  /* 初始位置由 GSAP 的 yPercent 接管：这里再写 translateY(102%) 会和它叠加成 204%，面板永远盖不上来 */
 }
 
 .veil__panel::after {
@@ -201,29 +201,36 @@ p {
   background: var(--ink);
 }
 
-.veil__label {
-  position: absolute;
+/* 转场标签：独立于幕布，靠 difference 自动反色当前底色 */
+.veil-label,
+.veil-meta {
+  position: fixed;
   left: 50%;
+  z-index: 191;
+  margin: 0;
+  pointer-events: none;
+  color: #fff;
+  /* 白色做 difference：黑底→白，浅底→黑，永远和底下那层相反 */
+  mix-blend-mode: difference;
+  white-space: nowrap;
+  opacity: 0;
+  will-change: opacity, transform;
+}
+
+.veil-label {
   top: 50%;
-  transform: translate(-50%, -50%);
+  /* 居中同样交给 GSAP 的 xPercent/yPercent，CSS 里写 transform 会二次偏移 */
   font-family: var(--font-display);
   font-size: clamp(56px, 11vw, 150px);
   letter-spacing: 0.02em;
-  color: var(--paper);
-  opacity: 0;
-  white-space: nowrap;
+  line-height: 1;
 }
 
-.veil__meta {
-  position: absolute;
-  left: 50%;
+.veil-meta {
   top: calc(50% + clamp(40px, 8vw, 110px));
-  transform: translateX(-50%);
   font-size: 11px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--paper);
-  opacity: 0;
 }
 
 /* ------------------------------------------------------------
@@ -1379,6 +1386,10 @@ body.cursor-hot .cursor {
 }
 
 .cursor.is-hide { opacity: 0; }
+
+/* 转场期间收起光标：hover 态是 62px 实心白圆，被 difference 反成白色后压在墨幕的大字上很乱 */
+body.is-veil .cursor,
+body.is-veil .cursor-dot { opacity: 0; }
 
 /* ------------------------------------------------------------
    响应式

@@ -85,7 +85,7 @@ function renderContent() {
   // —— 项目 ——
   $('#projList').innerHTML = projects
     .map(
-      (p) => `<li><a href="${p.href}" data-img="${p.image}">
+      (p) => `<li><a href="${p.href}" data-img="${p.image}" target="_blank" rel="noopener noreferrer">
         <span class="idx">${p.index}</span>
         <span class="name">${p.name}</span>
         <span class="stack">${p.stack}</span>
@@ -97,7 +97,7 @@ function renderContent() {
   // —— 博客 ——
   $('#blogList').innerHTML = posts
     .map(
-      (p) => `<li><a href="${p.href || '#'}" data-img="${p.image}">
+      (p) => `<li><a href="${p.href || '#'}" data-img="${p.image}" target="_blank" rel="noopener noreferrer">
         <span class="idx">${p.index}</span>
         <span class="title">${p.title}</span>
         <span class="meta"><span>${p.date}</span><span>${p.read}</span></span>
@@ -376,35 +376,104 @@ function buildHoverFloats() {
 }
 
 /* ============================================================
-   6. 外链转场：墨幕扫过 → 跳转
+   6. 外链转场：墨幕扫过 → 新窗口打开 → 幕布自收
    ============================================================ */
 function buildVeil() {
   const veil = $('#veil');
   const panel = veil.querySelector('.veil__panel');
   const label = $('#veilLabel');
   const meta = $('#veilMeta');
+  const floats = ['#projFloat', '#blogFloat'].map((s) => $(s)).filter(Boolean);
+
+  let tl = null;
   let busy = false;
+  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 跟随图只在 pointerleave 时收起；跳转时指针没离开，回来会一直挂在屏上
+  const dropFloats = () => floats.forEach((f) => f.classList.remove('is-on'));
+
+  // 定位与初始态统一由 GSAP 接管（CSS 里的 transform 会和百分比叠加，已移除）
+  const layout = () => {
+    gsap.set(panel, { yPercent: 102 });
+    gsap.set([label, meta], { xPercent: -50, opacity: 0, y: 0 });
+    gsap.set(label, { yPercent: -50 });
+  };
+  layout();
+
+  // 复位：把转场留在 DOM 上的状态全清掉（含 busy 锁）
+  const reset = () => {
+    tl?.kill();
+    tl = null;
+    busy = false;
+    veil.classList.remove('is-on');
+    document.body.classList.remove('is-veil');
+    layout();
+    dropFloats();
+  };
+
+  // 新窗口打开；被拦截时退回当前页跳转，免得点了没反应
+  const openInNewTab = (href) => {
+    let win = null;
+    try {
+      win = window.open(href, '_blank');
+    } catch {
+      win = null;
+    }
+    if (!win) {
+      window.location.href = href;
+      return;
+    }
+    // 已导航到跨域地址时访问 opener 会抛错，忽略即可，不能影响跳转结果
+    try { win.opener = null; } catch { /* noop */ }
+  };
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('#blogList a, #projList a');
-    if (!a || busy) return;
+    if (!a) return;
+    if (busy) { e.preventDefault(); return; }
     const href = a.getAttribute('href');
     if (!href || href.startsWith('#')) return;
-    // 用户偏好减少动效时直接走默认跳转
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // 中键 / ⌘ / Ctrl / Shift / Alt：交给浏览器自己开新标签，不插动画
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
     e.preventDefault();
+
+    if (reducedMotion()) {
+      openInNewTab(href);
+      return;
+    }
+
     busy = true;
+    dropFloats();
     const toBlog = a.closest('#blogList') !== null;
     label.textContent = toBlog ? 'BLOG →' : 'GITHUB ↗';
     meta.textContent = toBlog ? 'blog.zuiges.com' : 'github.com/zuige66';
     veil.classList.add('is-on');
-    gsap
-      .timeline()
-      .fromTo(panel, { yPercent: 102 }, { yPercent: 0, duration: 0.6, ease: 'power4.inOut' })
-      .fromTo(label, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out' }, '-=0.18')
-      .fromTo(meta, { opacity: 0 }, { opacity: 0.55, duration: 0.3 }, '-=0.2')
-      .add(() => { window.location.href = href; }, '+=0.3');
+    document.body.classList.add('is-veil');
+
+    tl = gsap
+      .timeline({ onComplete: reset })
+      // 1. 墨幕自下而上盖满
+      .fromTo(panel, { yPercent: 102 }, { yPercent: 0, duration: 0.46, ease: 'power4.inOut' })
+      // 2. 面板完全盖满之后才亮字：先黑屏、再白字，中间不留任何字压在页面上的瞬间
+      .fromTo(label, { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 0.32, ease: 'power3.out' }, '+=0.05')
+      .fromTo(meta, { opacity: 0 }, { opacity: 0.62, duration: 0.24, ease: 'power2.out' }, '-=0.16')
+      // 3. 标签亮到位的同时把新窗口递出去
+      .add(() => openInNewTab(href), '-=0.04')
+      // 4. 停一拍，幕布上收、标签退场
+      .to([label, meta], { opacity: 0, duration: 0.2, ease: 'power2.in' }, '+=0.3')
+      .to(panel, { yPercent: -102, duration: 0.46, ease: 'power4.inOut' }, '-=0.1');
   });
+
+  // 从新标签页切回：把幕布和跟随图收干净
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') reset();
+  });
+  // 万一走了当前页跳转，浏览器后退时 bfcache 会把旧 DOM 原样还回来
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) reset();
+  });
+  window.addEventListener('popstate', reset);
 }
 
 /* ============================================================

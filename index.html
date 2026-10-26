@@ -32,9 +32,11 @@
   <!-- ============ 外链转场幕布 ============ -->
   <div class="veil" id="veil" aria-hidden="true">
     <div class="veil__panel"></div>
-    <span class="veil__label" id="veilLabel">BLOG →</span>
-    <span class="veil__meta" id="veilMeta">zuiges.com</span>
   </div>
+  <!-- 转场标签必须独立于 .veil：幕布自带 z-index 会隔出层叠上下文，
+       放进去就只能和黑色面板混色。放外面才能反色当前页面底色。 -->
+  <span class="veil-label" id="veilLabel" aria-hidden="true">BLOG →</span>
+  <span class="veil-meta" id="veilMeta" aria-hidden="true">zuiges.com</span>
 
   <!-- ============ 3D 画布 ============ -->
   <canvas id="gl"></canvas>
