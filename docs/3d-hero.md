@@ -9,15 +9,33 @@
 
 | 版本 | 文件 | 来源 | 特征 |
 |---|---|---|---|
-| v1 | `public/character.min.glb` | 早期半身像，五官烘焙进 baseColor，细线烙在 normalMap | 3.0 MB，正面半身 |
-| v2（默认） | `public/character-v2.min.glb` | Tripo AI 生成，全身站姿、右手前伸 | 3.74 MB，501,930 三角面 |
+| v1 | `public/character.min.glb` | 全身站姿那张（`character-1025-full.glb`），源文件自带 baseColor + normal + metallicRoughness | 3.03 MB，377,351 三角面，**全身 1.89 m** |
+| v2（默认） | `public/character-v2.min.glb` | `anime+character+3d+model.glb`，腰以上、右手直伸向镜头 | 3.74 MB，501,930 三角面，**半身 0.95 m** |
 
 ```
-http://127.0.0.1:5173/?model=v1     # 回到旧半身像
+http://127.0.0.1:5173/?model=v1     # 换成全身那张
 http://127.0.0.1:5173/?model=v2     # 默认
 ```
 
 `main.js` 里 `MODEL / MODEL_SRC / MODEL_INK / preset / 导航参数` 全部按版本分支，旧模型的表现不受新参数影响。
+
+### 1.1 三个模型分别是谁（容易混，记这里）
+
+| 顺序 | 画面内容 | 本地文件 | 现在干什么用 |
+|---|---|---|---|
+| 第一个 | 全身站姿，右手前伸，露鞋和裤脚 | `character-1025-full.glb`（19.9 MB，451,462 面）→ `assets/character-clean.glb`（网格清理，436,831 面）→ `assets/character-base.glb`（减面 377,351） | 压成 **v1** `public/character.min.glb` |
+| 第二个 | 后背有东西 | **本机已找不到**（`Downloads` / `Desktop` 都没有），估计下载同名被第三个覆盖 | 未使用 |
+| 第三个 | 腰以上，右手直伸向镜头，黑衣长发 | `anime+character+3d+model.glb`（18.79 MB，md5 `bd532146feb4…`），`public/model-new.glb` 与它逐字节相同 | 压成 **v2**，默认在用 |
+
+判断依据不是文件名，而是**网格指纹**：v2 的网格名 `tripo_mesh_256e1a95-…`、501,930 面、293,493 顶点与第三个完全一致；
+v1 的 377,351 面、222,141 顶点与 `character-base.glb` 完全一致，后者来自 `character-1025-full.glb`（451,462 面 / 261,501 顶点）。
+
+想确认某份文件是哪张，跑这个就够：
+
+```bash
+md5sum anime+character+3d+model.glb public/model-new.glb   # 两个都是 bd532146feb4…
+npx gltf-transform inspect public/character-v2.min.glb | grep TRIANGLES
+```
 
 ### v2 资产处理（从 17.9 MB 压到 3.74 MB）
 
@@ -190,6 +208,7 @@ v1 相机极近（z ≈ 1.87），轨道半径必须收到 0.86，否则标签�
 ## 6. 已知问题 / 待办
 
 - **面数偏大**：50 万三角面单次 draw call，桌面独显无压力，集显/移动端未实测。若卡顿，优先做 `simplify --ratio 0.6`（注意保护手部）。
-- **v1 的标签偏小**：旧半身像取景太紧，标签只能压到 0.075，v2 是默认，v1 只作对比用。
+- **v1 的标签偏小**：v1 是全身像，相机被拉到 z ≈ 1.87（v2 是 3.12），同样的世界尺寸会贴到脸上，
+  `baseSize` 只能压到 0.075，视觉上比 v2 小一圈；v1 只作对比用，不追求效果。
 - **`public/model-new.glb`**（18 MB）是历史上传的原始模型副本，代码已不引用，可以从仓库删掉省体积。
 - v2 无骨骼、无动画，呼吸与转动都是整体变换，幅度需克制，否则手会穿出画面。

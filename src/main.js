@@ -629,7 +629,7 @@ async function init() {
   let webglOK = true;
   let scene, orbit, words;
 
-  // 模型选择：默认新的 Tripo 全身像；?model=v1 回到旧的半身像
+  // 模型选择：默认 v2 = 腰以上、右手前伸那张；?model=v1 = 全身站姿那张
   const MODEL = new URLSearchParams(location.search).get('model') === 'v1' ? 'v1' : 'v2';
   const MODEL_SRC = MODEL === 'v1' ? '/character.min.glb' : '/character-v2.min.glb';
   // 新模型没有 normalMap，靠几何法线给黑布料找回褶皱笔触
@@ -675,7 +675,7 @@ async function init() {
     }, MODEL_INK);
 
     orbit = new OrbitNav(scene.scene, scene.camera, nav, {
-      // v1 是半身像，取景更紧，轨道要收回来，否则标签会顶出画面
+      // v1 是全身像，相机更近（z≈1.87），轨道要收回来，否则标签会顶出画面
       ...(MODEL === 'v1'
         ? { baseSize: 0.075, arc: 1.18, ringR: 0.86, baseY: 0.52, tiltK: 0.06, tiltX: 0.14 }
         : { baseSize: 0.15, arc: 0.90, ringR: 1.42, baseY: 0.46, tiltK: 0.13, tiltX: 0.18 }),
